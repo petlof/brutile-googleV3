@@ -19,7 +19,6 @@ namespace GoogleMapsTest
         {
             ts = new BruTile.GoogleMaps.GoogleV3TileSource();
             InitializeComponent();
-            ts.ProviderInitialized += new EventHandler(ts_ProviderInitialized);
             SharpMap.Layers.TileLayer tl = new SharpMap.Layers.TileLayer(ts, "Google");
 
             mapBox1.Map.Layers.Add(tl);
@@ -28,7 +27,7 @@ namespace GoogleMapsTest
             mapBox1.EnableShiftButtonDragRectangleZoom = true;
             mapBox1.PanOnClick = false;
             mapBox1.SetToolsNoneWhileRedrawing = false;
-
+            mapBox1.Refresh();
         }
 
         void ts_ProviderInitialized(object sender, EventArgs e)

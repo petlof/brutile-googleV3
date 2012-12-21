@@ -35,7 +35,6 @@ namespace BruTile.GoogleMaps
     public class GoogleV3TileSchema : ITileSchema, IDisposable
     {
         System.Windows.Forms.WebBrowser m_WebBrowser;
-        public event EventHandler ProviderInitialized;
         private string gmeClientID;
         private string googleChannel;
         private string referer;
@@ -165,9 +164,6 @@ namespace BruTile.GoogleMaps
 
                 m_Resolutions = getResolutions();
                 haveInited = true;
-                EventHandler eh = ProviderInitialized;
-                if (eh != null)
-                    eh(null, new EventArgs());
             }));
         }
 

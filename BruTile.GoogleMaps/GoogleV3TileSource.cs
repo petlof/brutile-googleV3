@@ -41,8 +41,6 @@ namespace BruTile.GoogleMaps
         private readonly GoogleV3TileSchema _tileSchema;
         private readonly GoogleV3TileProvider _googleMapsTP;
 
-        public event EventHandler ProviderInitialized;
-
         public GoogleV3TileSource(string googleClientID, string googleChannel, string baseUrl)
         {
             _tileSchema = new GoogleMaps.GoogleV3TileSchema(googleClientID, googleChannel, baseUrl);
@@ -51,29 +49,18 @@ namespace BruTile.GoogleMaps
             else
                 _googleMapsTP = new GoogleMaps.GoogleV3TileProvider(baseUrl);
 
-            _tileSchema.ProviderInitialized += new EventHandler(_tileSchema_ProviderInitialized);
         }
 
         public GoogleV3TileSource()
-            : this(null, null, "http://localhost")
+            : this(null, null, null)
         {
 
-        }
-
-        void _tileSchema_ProviderInitialized(object sender, EventArgs e)
-        {
-            var eh = ProviderInitialized;
-            if (eh != null)
-                eh(sender, e);
         }
 
         public void UpdateMapSize(int width, int height)
         {
             (_tileSchema as GoogleV3TileSchema).SetSize(width, height);
         }
-
-       
-        
 
         public ITileProvider Provider
         {
