@@ -45,5 +45,21 @@ namespace GoogleMapsTest
         {
             mapBox1.Refresh();
         }
+
+        private void button2_Click(object sender, EventArgs e)
+        {
+            //for (int i = 0; i < 10; i++)
+            {
+                FrmMapFrm frm = new FrmMapFrm();
+                frm.Show();
+                //while (!frm.Visible)
+                //{
+                //    Thread.Sleep(100);
+                //}
+                
+                //frm.Close();
+                //frm.Dispose();
+            }
+        }
     }
 }

@@ -36,10 +36,10 @@ namespace BruTile.GoogleMaps
     /// Implementation of a GoogleMaps V3 TileSource
     /// This hosts the Google Maps Javascript API internally in the application and grabs tiles from that to render in brutile.
     /// </summary>
-    public class GoogleV3TileSource : BruTile.ITileSource
+    public class GoogleV3TileSource : BruTile.ITileSource, IDisposable
     {
-        private readonly GoogleV3TileSchema _tileSchema;
-        private readonly GoogleV3TileProvider _googleMapsTP;
+        private GoogleV3TileSchema _tileSchema;
+        private GoogleV3TileProvider _googleMapsTP;
 
         public GoogleV3TileSource(string googleClientID, string googleChannel, string baseUrl)
         {
@@ -70,6 +70,15 @@ namespace BruTile.GoogleMaps
         public ITileSchema Schema
         {
             get { return _tileSchema; }
+        }
+
+        public void Dispose()
+        {
+            if (_tileSchema != null)
+            {
+                _tileSchema.Dispose();
+                _tileSchema = null;
+            }
         }
     }
 }

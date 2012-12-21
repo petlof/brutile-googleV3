@@ -401,6 +401,8 @@ namespace BruTile.GoogleMaps
 
         bool isLoaded()
         {
+            if (!mapsAdded)
+                return false;
             bool done = false;
             m_WebBrowser.Invoke(new MethodInvoker(delegate
             {
