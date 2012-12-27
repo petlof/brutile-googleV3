@@ -53,6 +53,10 @@ function isZoomDone() {
     return zoomDone;
 }
 
+function getHtml() {
+    return "<html><head>" + document.getElementsByTagName("head")[0].innerHTML + "</head><body onload=\"init()\">" + document.body.innerHTML + "</body></html>";
+}
+
 function isLoaded() {
     return loaded;
 }

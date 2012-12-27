@@ -163,9 +163,13 @@ namespace BruTile.GoogleMaps
                         Thread.Sleep(100);
                 }
                 while (!(res is bool && (bool)res == true));
-
-                setBaseLayer();
                 haveInited = true;
+                m_WebBrowser.Invoke(new MethodInvoker(delegate
+                        {
+                            string txt = m_WebBrowser.Document.InvokeScript("getHtml") as string;
+                            //System.IO.File.WriteAllText("c:\\temp\\maps.html", txt);
+                            //System.IO.File.Create("c:\\temp\\mapactions.txt").Close();
+                        }));
             }));
         }
 
@@ -289,14 +293,6 @@ namespace BruTile.GoogleMaps
         }
 
 
-        void setBaseLayer()
-        {
-            m_WebBrowser.Invoke(new MethodInvoker(delegate
-            {
-                m_WebBrowser.Document.InvokeScript("setBaseLayer",new object[] { "google.maps.MapTypeId.HYBRID"});
-            }));
-        }
-
         /// <summary>
         /// Retreived resolutions from the GoogleMaps JS
         /// </summary>
@@ -367,9 +363,13 @@ namespace BruTile.GoogleMaps
             
             m_WebBrowser.Invoke(new MethodInvoker(delegate
                 {
-                    m_WebBrowser.Size = new System.Drawing.Size(width+Width*2, height+Height*2);
-                    size = m_WebBrowser.Document.InvokeScript("updateSize", new object[] { width+Width*2, height+Height*2 }) as string;
+                    m_WebBrowser.Size = new System.Drawing.Size(width, height);
+                    size = m_WebBrowser.Document.InvokeScript("updateSize", new object[] { width, height }) as string;
                 }));
+
+            //System.IO.File.AppendAllText("c:\\temp\\mapactions.txt", DateTime.Now.ToString() + "\r\nvar c = map.getCenter();var z = map.getZoom();document.getElementById(\"map\").style.width = " + width + "+\"px\";");
+            //System.IO.File.AppendAllText("c:\\temp\\mapactions.txt", "document.getElementById(\"map\").style.height = " + height + "+\"px\";map.updateSize();map.setCenter(c, z, true, false);\r\n");
+
 
             string ext = "";
             m_WebBrowser.Invoke(new MethodInvoker(delegate
@@ -394,6 +394,9 @@ namespace BruTile.GoogleMaps
             {
                 m_WebBrowser.Document.InvokeScript("setExtent", new object[] { xmin, ymin, xmax, ymax, level});
             }));
+
+
+            //System.IO.File.AppendAllText("c:\\temp\\mapactions.txt", DateTime.Now.ToString() + "\r\nmap.setCenter(new OpenLayers.LonLat(" + ((xmin + xmax) / 2) + ", " + ((ymin + ymax) / 2) + "), " + level + ", true, false);\r\n");
 
             //Wait for zooming to end
             for (int i = 0; i < 10; i++)
