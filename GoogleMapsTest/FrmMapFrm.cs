@@ -18,7 +18,6 @@ namespace GoogleMapsTest
             InitializeComponent();
             SharpMap.Layers.TileLayer tl = new SharpMap.Layers.TileLayer(ts, "Google");
             mapBox1.Map.Layers.Add(tl);
-            mapBox1.SizeChanged += new EventHandler(mapBox1_SizeChanged);
             mapBox1.Map.ZoomToBox(new GeoAPI.Geometries.Envelope(-1500000, 4250000, 4500000, 12500000));
             mapBox1.EnableShiftButtonDragRectangleZoom = true;
             mapBox1.PanOnClick = false;
@@ -35,11 +34,6 @@ namespace GoogleMapsTest
                 ts = null;
             }
             
-        }
-
-        void mapBox1_SizeChanged(object sender, EventArgs e)
-        {
-            ts.UpdateMapSize(mapBox1.Width, mapBox1.Height);
         }
 
     }

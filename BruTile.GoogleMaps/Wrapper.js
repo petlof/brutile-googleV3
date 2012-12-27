@@ -18,11 +18,9 @@
 * 
 **/
 
-function getOLVersion() { return OpenLayers.VERSION_NUMBER; }
-
 var map;
+var baseLayer;
 function init() {
-    
     var map_options = {
         units: 'm',
         controls: [],
@@ -32,7 +30,7 @@ function init() {
     var initExt = new OpenLayers.Bounds(253351.88636639, 7494072.399048, 3168965.8928703, 10497741.862124);
     map = new OpenLayers.Map('map', map_options);
 
-    gl = new OpenLayers.Layer.Google("Google", { layers: "0", format: "PNG24", numZoomLevels: 20 }, { buffer: 1 });
+    gl = new OpenLayers.Layer.Google("Google", { type: eval(baseLayer), format: "PNG24", numZoomLevels: 20 }, { buffer: 1 });
     map.addLayer(gl);
     map.zoomToExtent(initExt);
     map.events.register("movestart", map, function () { zoomDone = false; });
@@ -69,11 +67,7 @@ function getExtent() {
 
 function setExtent(xmin, ymin, xmax, ymax, level) {
     zoomDone = false;
-    //var ext = new OpenLayers.Bounds(xmin, ymin, xmax, ymax);
-    //map.zoomTo(level);
-    map.setCenter(new OpenLayers.LonLat((xmin+xmax)/2, (ymin+ymax)/2),level,true,false);
-    //map.zoomToExtent(ext, true);
-    
+    map.setCenter(new OpenLayers.LonLat((xmin+xmax)/2, (ymin+ymax)/2),level,true,false);   
 }
 
 function getTileURLs() {

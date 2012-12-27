@@ -38,12 +38,13 @@ namespace BruTile.GoogleMaps
     /// </summary>
     public class GoogleV3TileSource : BruTile.ITileSource, IDisposable
     {
+        public enum MapTypeId { ROADMAP, SATELLITE, HYBRID, TERRAIN };
         private GoogleV3TileSchema _tileSchema;
         private GoogleV3TileProvider _googleMapsTP;
 
-        public GoogleV3TileSource(string googleClientID, string googleChannel, string baseUrl)
+        public GoogleV3TileSource(string googleClientID, string googleChannel, string baseUrl, MapTypeId mapType)
         {
-            _tileSchema = new GoogleMaps.GoogleV3TileSchema(googleClientID, googleChannel, baseUrl);
+            _tileSchema = new GoogleMaps.GoogleV3TileSchema(googleClientID, googleChannel, baseUrl, mapType);
             if (!string.IsNullOrEmpty(baseUrl))
                 _googleMapsTP = new GoogleMaps.GoogleV3TileProvider();
             else
@@ -51,17 +52,17 @@ namespace BruTile.GoogleMaps
 
         }
 
+        public GoogleV3TileSource(MapTypeId mapType)
+            : this(null, null, null, mapType)
+        {
+
+        }
+
         public GoogleV3TileSource()
-            : this(null, null, null)
+            : this(null, null, null, MapTypeId.ROADMAP)
         {
 
         }
-
-        public void UpdateMapSize(int width, int height)
-        {
-            (_tileSchema as GoogleV3TileSchema).SetSize(width, height);
-        }
-
         public ITileProvider Provider
         {
             get { return _googleMapsTP; }

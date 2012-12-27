@@ -38,8 +38,10 @@ namespace BruTile.GoogleMaps
         private string gmeClientID;
         private string googleChannel;
         private string referer;
-        public GoogleV3TileSchema(string gmeClientID, string googleChannel, string referer)
+        private GoogleV3TileSource.MapTypeId _mapType;
+        public GoogleV3TileSchema(string gmeClientID, string googleChannel, string referer, GoogleV3TileSource.MapTypeId mapType)
         {
+            _mapType = mapType;
             Height = 256;
             Width = 256;
             Extent = new Extent(-20037508.342789, -20037508.342789, 20037508.342789, 20037508.342789);
@@ -126,7 +128,7 @@ namespace BruTile.GoogleMaps
                 htEl = m_WebBrowser.Document.CreateElement("script");
                 htEl.SetAttribute("type", "text/javascript");
                 t = htEl.DomElement.GetType();
-                t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[] { getOpenLayersCode() });
+                t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[] { "baseLayer = \"google.maps.MapTypeId." + _mapType.ToString() + "\";" + getOpenLayersCode() });
                 m_WebBrowser.Document.Body.AppendChild(htEl);
 
                 htEl = m_WebBrowser.Document.CreateElement("script");
@@ -162,7 +164,7 @@ namespace BruTile.GoogleMaps
                 }
                 while (!(res is bool && (bool)res == true));
 
-                m_Resolutions = getResolutions();
+                setBaseLayer();
                 haveInited = true;
             }));
         }
@@ -286,6 +288,14 @@ namespace BruTile.GoogleMaps
             return tis;
         }
 
+
+        void setBaseLayer()
+        {
+            m_WebBrowser.Invoke(new MethodInvoker(delegate
+            {
+                m_WebBrowser.Document.InvokeScript("setBaseLayer",new object[] { "google.maps.MapTypeId.HYBRID"});
+            }));
+        }
 
         /// <summary>
         /// Retreived resolutions from the GoogleMaps JS

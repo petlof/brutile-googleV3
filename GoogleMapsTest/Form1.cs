@@ -17,7 +17,7 @@ namespace GoogleMapsTest
         BruTile.GoogleMaps.GoogleV3TileSource ts;
         public Form1()
         {
-            ts = new BruTile.GoogleMaps.GoogleV3TileSource();
+            ts = new BruTile.GoogleMaps.GoogleV3TileSource( BruTile.GoogleMaps.GoogleV3TileSource.MapTypeId.SATELLITE);
             InitializeComponent();
             SharpMap.Layers.TileLayer tl = new SharpMap.Layers.TileLayer(ts, "Google");
 
