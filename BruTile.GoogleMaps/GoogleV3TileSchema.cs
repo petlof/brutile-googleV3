@@ -181,9 +181,12 @@ namespace BruTile.GoogleMaps
 
 
 
-        public new Extent GetExtentOfTilesInView(Extent extent, int level)
+        public Extent GetExtentOfTilesInView(Extent extent, int level)
         {
             waitForLoad();
+
+            /*We need to expand the extent to the extent in "whole" tiles since our webbrowsercontrol shows that..*/
+            extent = AdjustExtentToTiles(extent, level);
 
             /*Get mapWidth in pixels*/
             setExtent(extent.MinX, extent.MinY, extent.MaxX, extent.MaxY, level);
@@ -213,15 +216,46 @@ namespace BruTile.GoogleMaps
             return ext;
         }
 
+        private Extent AdjustExtentToTiles(Extent extent, int level)
+        {
+            int w = (int)Math.Ceiling(extent.Width / Resolutions[level].UnitsPerPixel);
+            int h = (int)Math.Ceiling(extent.Height / Resolutions[level].UnitsPerPixel);
+
+            //Make sure we have a width that is atleast 2 tiles bigger than the extent..
+            w = (int)(256 * (Math.Floor(w / 256.0) + 2));
+            h = (int)(256 * (Math.Floor(h / 256.0) + 2));
+
+
+            setSize(w, h);
+            double dw = w * Resolutions[level].UnitsPerPixel;
+            double dh = h * Resolutions[level].UnitsPerPixel;
+
+            extent = new BruTile.Extent(extent.CenterX - dw / 2, extent.CenterY - dh / 2, extent.CenterX + dw / 2, extent.CenterY + dh / 2);
+            return extent;
+        }
+
+
+        int curW = -1;
+        int curH = -1;
         public void SetSize(int w, int h)
         {
-            setSize(w, h);
+            if (w != curW || h != curH)
+            {
+                setSize(w, h);
+                curH = h;
+                curW = w;
+            }
         }
 
         Regex rex = new Regex(@"x=(?<x>\d+).*?&y=(?<y>\d+).*?&z=(?<z>\d+)", RegexOptions.IgnoreCase);
         public IEnumerable<BruTile.TileInfo> GetTilesInView(Extent extent, int level)
         {
             waitForLoad();
+
+            /*We need to expand the extent to the extent in "whole" tiles since our webbrowsercontrol shows that..*/
+            extent = AdjustExtentToTiles(extent, level);
+
+
             extent = setExtent(extent.MinX, extent.MinY, extent.MaxX, extent.MaxY, level);
 
             List<BruTile.TileInfo> tis = new List<BruTile.TileInfo>();
@@ -326,19 +360,6 @@ namespace BruTile.GoogleMaps
                     m_WebBrowser.Size = new System.Drawing.Size(width+Width*2, height+Height*2);
                     size = m_WebBrowser.Document.InvokeScript("updateSize", new object[] { width+Width*2, height+Height*2 }) as string;
                 }));
-
-            //Wait for zooming to end
-            //for (int i = 0; i < 100; i++)
-            //{
-            //    if (!zoomDone())
-            //    {
-            //        Thread.Sleep(100);
-            //    }
-            //    else
-            //    {
-            //        break;
-            //    }
-            //}
 
             string ext = "";
             m_WebBrowser.Invoke(new MethodInvoker(delegate
@@ -475,7 +496,11 @@ namespace BruTile.GoogleMaps
         public void Dispose()
         {
             if (m_WebBrowser != null)
+            {
                 m_WebBrowser.Dispose();
+                m_WebBrowser = null;
+            }
+            GC.SuppressFinalize(this);
         }
     }
 }
