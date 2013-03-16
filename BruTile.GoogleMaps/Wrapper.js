@@ -104,11 +104,20 @@ function getTileURLs() {
             }
             oX = els[i].parentNode.offsetLeft + matrixOffset.x;
             oY = els[i].parentNode.offsetTop + matrixOffset.y;
-
+            z = 0;
+            children = els[i].parentNode.childNodes;
+            for (n = 0; n < children.length; n++)
+            {
+                if (children[i] == els[i]) {
+                    z = n;
+                    break;
+                }
+            }
             images["item_" + idx] = { url: els[i].src,
                 left: oX,
                 top: oY,
-                index: i
+                index: i,
+                zIndex : z
             };
             idx++;
         //}

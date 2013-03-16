@@ -284,8 +284,9 @@ namespace BruTile.GoogleMaps
                     tis.Add(new BruTile.GoogleMaps.GoogleV3TileInfo()
                         {
                             Url = ti.Url,
-                            Index = new TileIndex(x, y, z),
-                            Extent = e
+                            Index = new TileIndex(x, y, ti.Url.GetHashCode() ^ ti.zIndex),
+                            Extent = e,
+                            ZIndex = ti.zIndex
                         });
                 }
             }
@@ -320,6 +321,7 @@ namespace BruTile.GoogleMaps
             public int Left { get; set; }
             public int Top { get; set; }
             public int Index { get; set; }
+            public int zIndex { get; set; }
         }
 
         private jsTileInfo[] getCurrentTileURLs()
@@ -340,12 +342,14 @@ namespace BruTile.GoogleMaps
                 int left = (int)t.InvokeMember("left", BindingFlags.GetProperty, null, item, null);
                 int top = (int)t.InvokeMember("top", BindingFlags.GetProperty, null, item, null);
                 int index = (int)t.InvokeMember("index", BindingFlags.GetProperty, null, item, null);
+                int zIndex = (int)t.InvokeMember("zIndex", BindingFlags.GetProperty, null, item, null);
                 ti[i] = new jsTileInfo()
                 {
                     Url = url,
                     Left = left,
                     Top = top,
-                    Index = index
+                    Index = index,
+                    zIndex = zIndex
                 };
             }
 
