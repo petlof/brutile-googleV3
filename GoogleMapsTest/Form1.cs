@@ -50,5 +50,10 @@ namespace GoogleMapsTest
                 //frm.Dispose();
             }
         }
+
+        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            ts.Dispose();
+        }
     }
 }

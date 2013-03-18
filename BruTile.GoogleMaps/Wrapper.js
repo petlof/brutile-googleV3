@@ -30,27 +30,53 @@ function init() {
     var initExt = new OpenLayers.Bounds(253351.88636639, 7494072.399048, 3168965.8928703, 10497741.862124);
     map = new OpenLayers.Map('map', map_options);
 
-    gl = new OpenLayers.Layer.Google("Google", { type: eval(baseLayer), format: "PNG24", numZoomLevels: 20 }, { buffer: 1 });
+    gl = new OpenLayers.Layer.Google("Google", { type: eval(baseLayer), format: "PNG24", numZoomLevels: 20 }, { buffer: 1, transitionEffect: null });
     map.addLayer(gl);
     map.zoomToExtent(initExt);
-    map.events.register("movestart", map, function () { zoomDone = false; });
 
+    /*onDomChange(function () {
+    idle = false; tilesloaded = false;
+    });*/
+    gl.mapObject.setTilt(0);
+
+    //google.maps.event.addListener(gl.mapObject, "bounds_changed", function () { idle = false; tilesloaded = false; /*alert("bounds_changed");*/ });
+
+    map.events.register('movestart', map, function () {
+        idle = false; tilesloaded = false;
+    });
+
+    google.maps.event.addListener(gl.mapObject, "idle", function () {
+        // wait for tiles to fade in completely
+        setTimeout(function () {
+            idle = true;
+        },
+                0);
+    });
     google.maps.event.addListener(gl.mapObject, "tilesloaded", function () {
         // wait for tiles to fade in completely
         setTimeout(function () {
-            zoomDone = true;
+            tilesloaded = true;
         },
                 150);
     });
-
     loaded = true;
 }
 
-zoomDone = false;
+idle = false;
+tilesloaded = false;
 loaded = false;
 
-function isZoomDone() {
-    return zoomDone;
+function isZoomDone() {    
+    return tilesloaded && idle;
+}
+
+
+function isIdle() {
+    return idle;
+}
+
+function isTilesLoaded() {
+    return tilesloaded;
 }
 
 function getHtml() {
@@ -70,8 +96,20 @@ function getExtent() {
 }
 
 function setExtent(xmin, ymin, xmax, ymax, level) {
-    zoomDone = false;
-    map.setCenter(new OpenLayers.LonLat((xmin+xmax)/2, (ymin+ymax)/2),level,true,false);   
+    //  zoomDone = 0;
+    //map.setCenter(new OpenLayers.LonLat((xmin+xmax)/2, (ymin+ymax)/2),level,true,false);   
+    var ULbefore = map.getLonLatFromPixel(new OpenLayers.Pixel(0, 0));
+    var zbefore = map.getZoom();
+
+    map.zoomToExtent(new OpenLayers.Bounds(xmin, ymin, xmax, ymax), true); //, level, true, false);   
+
+    var zafter = map.getZoom();
+
+    var ulAfter = map.getPixelFromLonLat(ULbefore);
+
+    if (zafter == zbefore && Math.abs(ulAfter.x) < 256 && Math.abs(ulAfter.y) < 256) {
+        tilesloaded = true;
+    }
 }
 
 function getTileURLs() {
@@ -149,13 +187,18 @@ function getOLExtent() {
 
 
 function updateSize(w, h) {
-    zoomDone = false;
+    idle = false;
+    tilesloaded = false;
     var c = map.getCenter();
     var z = map.getZoom();
     document.getElementById("map").style.width = w + "px";
     document.getElementById("map").style.height = h + "px";
     
     map.updateSize();
+    map.setCenter(c, z + 1, true, false);
     map.setCenter(c, z, true, false);
     return map.getSize().w + "," + map.getSize().h;
 }
+
+
+
