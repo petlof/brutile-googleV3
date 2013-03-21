@@ -23,6 +23,7 @@ namespace GoogleMapsTest
 
             mapBox1.Map.Layers.Add(tl);
             mapBox1.Map.ZoomToBox(new GeoAPI.Geometries.Envelope(-1500000, 4250000, 4500000, 12500000));
+            //mapBox1.Map.ZoomToBox(new GeoAPI.Geometries.Envelope(1500000, 1600000, 4500000, 4600000));
             mapBox1.EnableShiftButtonDragRectangleZoom = true;
             mapBox1.PanOnClick = false;
             mapBox1.SetToolsNoneWhileRedrawing = false;
