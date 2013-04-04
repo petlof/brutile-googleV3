@@ -68,6 +68,7 @@ namespace BruTile.GoogleMaps
                 m_WebBrowser.Visible = false;
                 m_WebBrowser.ScrollBarsEnabled = false;
                 m_WebBrowser.Size = new System.Drawing.Size(600, 400);
+                m_WebBrowser.ScriptErrorsSuppressed = true;
                 m_WebBrowser.DocumentCompleted += new System.Windows.Forms.WebBrowserDocumentCompletedEventHandler(m_WebBrowser_DocumentCompleted);
                 
                 if (!string.IsNullOrEmpty(referer))
@@ -178,12 +179,19 @@ namespace BruTile.GoogleMaps
                 object res = null;
                 do
                 {
-                    m_WebBrowser.Invoke(new MethodInvoker(delegate
-                        {
-                            res = m_WebBrowser.Document.InvokeScript("isLoaded");
-                        }));
-                    if (!(res is bool && (bool)res == true))
+                    try
+                    {
+                        m_WebBrowser.Invoke(new MethodInvoker(delegate
+                            {
+                                res = m_WebBrowser.Document.InvokeScript("isLoaded");
+                            }));
+                        if (!(res is bool && (bool)res == true))
+                            Thread.Sleep(100);
+                    }
+                    catch
+                    {
                         Thread.Sleep(100);
+                    }
                 }
                 while (!(res is bool && (bool)res == true));
                 haveInited = true;
@@ -367,10 +375,20 @@ namespace BruTile.GoogleMaps
             string result = null;
             lock (m_WebBrowser)
             {
-                m_WebBrowser.Invoke(new MethodInvoker(delegate
+                try
                 {
-                    result = m_WebBrowser.Document.InvokeScript("getResolutions") as string;
-                }));
+                    m_WebBrowser.Invoke(new MethodInvoker(delegate
+                    {
+                        result = m_WebBrowser.Document.InvokeScript("getResolutions") as string;
+                    }));
+                }
+                catch
+                {
+                    m_WebBrowser.Invoke(new MethodInvoker(delegate
+                    {
+                        result = m_WebBrowser.Document.InvokeScript("getResolutions") as string;
+                    }));
+                }
             }
             string[] parts = result.Split(',');
             Resolution[] ret = new Resolution[parts.Length];
@@ -396,10 +414,21 @@ namespace BruTile.GoogleMaps
             object ret = null;
             lock (m_WebBrowser)
             {
-                m_WebBrowser.Invoke(new MethodInvoker(delegate
+                try
                 {
-                    ret = m_WebBrowser.Document.InvokeScript("getTileURLs");
-                }));
+                    m_WebBrowser.Invoke(new MethodInvoker(delegate
+                    {
+                        ret = m_WebBrowser.Document.InvokeScript("getTileURLs");
+                    }));
+                }
+                catch
+                {
+                    m_WebBrowser.Invoke(new MethodInvoker(delegate
+                    {
+                        ret = m_WebBrowser.Document.InvokeScript("getTileURLs");
+                    }));
+                }
+                    
             }
             Type t = ret.GetType();
             int len = Convert.ToInt32(t.InvokeMember("length", BindingFlags.GetProperty, null, ret, null));
@@ -439,20 +468,27 @@ namespace BruTile.GoogleMaps
                 string size;
                 lock (m_WebBrowser)
                 {
-                    m_WebBrowser.Invoke(new MethodInvoker(delegate
+                    try
+                    {
+                        m_WebBrowser.Invoke(new MethodInvoker(delegate
+                            {
+                                m_WebBrowser.Size = new System.Drawing.Size(width, height);
+                                size = m_WebBrowser.Document.InvokeScript("updateSize", new object[] { width, height }) as string;
+                            }));
+                    }
+                    catch
+                    {
+                        m_WebBrowser.Invoke(new MethodInvoker(delegate
                         {
                             m_WebBrowser.Size = new System.Drawing.Size(width, height);
                             size = m_WebBrowser.Document.InvokeScript("updateSize", new object[] { width, height }) as string;
                         }));
+                    }
                 }
                 curWidth = width;
                 curHeight = height;
 
             }
-
-            //System.IO.File.AppendAllText("c:\\temp\\mapactions.txt", DateTime.Now.ToString() + "\r\nvar c = map.getCenter();var z = map.getZoom();document.getElementById(\"map\").style.width = " + width + "+\"px\";");
-            //System.IO.File.AppendAllText("c:\\temp\\mapactions.txt", "document.getElementById(\"map\").style.height = " + height + "+\"px\";map.updateSize();map.setCenter(c, z, true, false);\r\n");
-
         }
 
         /// <summary>
@@ -467,10 +503,21 @@ namespace BruTile.GoogleMaps
             string ext = null;
             lock (m_WebBrowser)
             {
-                m_WebBrowser.Invoke(new MethodInvoker(delegate
+                try
                 {
-                    m_WebBrowser.Document.InvokeScript("setExtent", new object[] { xmin, ymin, xmax, ymax, level });
-                }));
+                    m_WebBrowser.Invoke(new MethodInvoker(delegate
+                    {
+                        m_WebBrowser.Document.InvokeScript("setExtent", new object[] { xmin, ymin, xmax, ymax, level });
+                    }));
+                }
+                catch 
+                {
+                    //Try again, there are some things with the webbrowsercontrol that throws exceptions sometimes..
+                    m_WebBrowser.Invoke(new MethodInvoker(delegate
+                    {
+                        m_WebBrowser.Document.InvokeScript("setExtent", new object[] { xmin, ymin, xmax, ymax, level });
+                    }));
+                }
 
                 Application.DoEvents();
 
@@ -490,11 +537,20 @@ namespace BruTile.GoogleMaps
                     }
                 }
 
-
-                m_WebBrowser.Invoke(new MethodInvoker(delegate
+                try
                 {
-                    ext = m_WebBrowser.Document.InvokeScript("getExtent") as string;
-                }));
+                    m_WebBrowser.Invoke(new MethodInvoker(delegate
+                    {
+                        ext = m_WebBrowser.Document.InvokeScript("getExtent") as string;
+                    }));
+                }
+                catch
+                {
+                    m_WebBrowser.Invoke(new MethodInvoker(delegate
+                    {
+                        ext = m_WebBrowser.Document.InvokeScript("getExtent") as string;
+                    }));
+                }
             }
 
             string[] parts = ext.Split(',');
@@ -507,10 +563,20 @@ namespace BruTile.GoogleMaps
         {
             bool done = false;
             //Do Not LOCK here
-            m_WebBrowser.Invoke(new MethodInvoker(delegate
+            try
             {
-                done = (bool)m_WebBrowser.Document.InvokeScript("isZoomDone");
-            }));
+                m_WebBrowser.Invoke(new MethodInvoker(delegate
+                {
+                    done = (bool)m_WebBrowser.Document.InvokeScript("isZoomDone");
+                }));
+            }
+            catch
+            {
+                m_WebBrowser.Invoke(new MethodInvoker(delegate
+                {
+                    done = (bool)m_WebBrowser.Document.InvokeScript("isZoomDone");
+                }));
+            }
 
             System.Diagnostics.Debug.WriteLine("ZoomDone: " + done);
 
@@ -518,11 +584,22 @@ namespace BruTile.GoogleMaps
             {
                 bool idle = false;
                 bool tilesLoaded = false;
-                m_WebBrowser.Invoke(new MethodInvoker(delegate
+                try
                 {
-                    idle = (bool)m_WebBrowser.Document.InvokeScript("isIdle");
-                    tilesLoaded = (bool)m_WebBrowser.Document.InvokeScript("isTilesLoaded");
-                }));
+                    m_WebBrowser.Invoke(new MethodInvoker(delegate
+                    {
+                        idle = (bool)m_WebBrowser.Document.InvokeScript("isIdle");
+                        tilesLoaded = (bool)m_WebBrowser.Document.InvokeScript("isTilesLoaded");
+                    }));
+                }
+                catch
+                {
+                    m_WebBrowser.Invoke(new MethodInvoker(delegate
+                    {
+                        idle = (bool)m_WebBrowser.Document.InvokeScript("isIdle");
+                        tilesLoaded = (bool)m_WebBrowser.Document.InvokeScript("isTilesLoaded");
+                    }));
+                }
                 System.Diagnostics.Debug.WriteLine("Idle: " + idle + ", TilesLoaded: " + tilesLoaded);
             }
 
@@ -540,10 +617,20 @@ namespace BruTile.GoogleMaps
             bool done = false;
             lock (m_WebBrowser)
             {
-                m_WebBrowser.Invoke(new MethodInvoker(delegate
+                try
                 {
-                    done = (bool)m_WebBrowser.Document.InvokeScript("isLoaded");
-                }));
+                    m_WebBrowser.Invoke(new MethodInvoker(delegate
+                    {
+                        done = (bool)m_WebBrowser.Document.InvokeScript("isLoaded");
+                    }));
+                }
+                catch
+                {
+                    m_WebBrowser.Invoke(new MethodInvoker(delegate
+                    {
+                        done = (bool)m_WebBrowser.Document.InvokeScript("isLoaded");
+                    }));
+                }
             }
             if (done)
                 m_IsLoaded = true;
