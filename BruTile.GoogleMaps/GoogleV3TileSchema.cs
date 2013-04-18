@@ -29,18 +29,24 @@ using System.Threading;
 using System.Windows.Forms;
 using System.Text.RegularExpressions;
 using System.Net;
+using Common.Logging;
 
 namespace BruTile.GoogleMaps
 {
     public class GoogleV3TileSchema : ITileSchema, IDisposable
     {
         System.Windows.Forms.WebBrowser m_WebBrowser;
+        static object locker = new object();
         private string gmeClientID;
         private string googleChannel;
         private string referer;
-        private GoogleV3TileSource.MapTypeId _mapType;
+        internal GoogleV3TileSource.MapTypeId _mapType;
         Thread wbThread = null;
         ApplicationContext appContext = null;
+        internal string[] mapUrlTemplates = null;
+        internal string[] overlayUrlTemplates = null;
+
+        static readonly ILog logger = LogManager.GetLogger(typeof(GoogleV3TileSchema));
 
         public GoogleV3TileSchema(string gmeClientID, string googleChannel, string referer, GoogleV3TileSource.MapTypeId mapType)
         {
@@ -61,38 +67,42 @@ namespace BruTile.GoogleMaps
             appContext = new ApplicationContext();
             wbThread = new Thread(() =>
             {
-                Form f = new Form();
-                f.Size = new System.Drawing.Size(600, 400);
-                m_WebBrowser = new System.Windows.Forms.WebBrowser();
-                m_WebBrowser.Navigating += new WebBrowserNavigatingEventHandler(m_WebBrowser_Navigating);
-                m_WebBrowser.Visible = false;
-                m_WebBrowser.ScrollBarsEnabled = false;
-                m_WebBrowser.Size = new System.Drawing.Size(600, 400);
-                m_WebBrowser.ScriptErrorsSuppressed = true;
-                m_WebBrowser.DocumentCompleted += new System.Windows.Forms.WebBrowserDocumentCompletedEventHandler(m_WebBrowser_DocumentCompleted);
-                
-                if (!string.IsNullOrEmpty(referer))
+                //Form f = new Form();
+                //f.Size = new System.Drawing.Size(600, 400);
+                try
                 {
-                    m_WebBrowser.Navigate(referer);
-                }
-                else
-                {
-                    m_WebBrowser.DocumentText = "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"><html xmlns=\"http://www.w3.org/1999/xhtml\"><body></body></html>";
-                }
+                    m_WebBrowser = new System.Windows.Forms.WebBrowser();
+                    m_WebBrowser.Navigating += new WebBrowserNavigatingEventHandler(m_WebBrowser_Navigating);
+                    m_WebBrowser.Visible = false;
+                    m_WebBrowser.ScrollBarsEnabled = false;
+                    m_WebBrowser.Size = new System.Drawing.Size(600, 400);
+                    m_WebBrowser.ScriptErrorsSuppressed = true;
+                    m_WebBrowser.DocumentCompleted += new System.Windows.Forms.WebBrowserDocumentCompletedEventHandler(m_WebBrowser_DocumentCompleted);
 
-              /*  m_WebBrowser.Visible = true;
-                f.Controls.Add(m_WebBrowser);
-                m_WebBrowser.SizeChanged += new EventHandler(delegate(object a, EventArgs e) { f.Size = m_WebBrowser.Size; });
-                f.Show();*/
+                    if (!string.IsNullOrEmpty(referer))
+                    {
+                        m_WebBrowser.Navigate(referer);
+                    }
+                    else
+                    {
+                        m_WebBrowser.DocumentText = "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"><html xmlns=\"http://www.w3.org/1999/xhtml\"><body></body></html>";
+                    }
 
-                if (appContext != null)
+                    if (appContext != null)
+                    {
+                        Application.Run(appContext);
+                    }
+                }
+                catch (Exception ee)
                 {
-                    Application.Run(appContext);
+                    logger.Error("Exception in WebBrowserThread, quitting", ee);
                 }
             });
             wbThread.Name = "WebBrowser Thread";
             wbThread.SetApartmentState(ApartmentState.STA);
             wbThread.Start();
+            if (logger.IsDebugEnabled)
+                logger.Debug("WebBrowserThread Started");
         }
 
         
@@ -177,6 +187,8 @@ namespace BruTile.GoogleMaps
             ThreadPool.QueueUserWorkItem(new WaitCallback(delegate
             {
                 object res = null;
+                if (logger.IsDebugEnabled)
+                    logger.Debug("Starting detection of initcomplete");
                 do
                 {
                     try
@@ -195,7 +207,29 @@ namespace BruTile.GoogleMaps
                 }
                 while (!(res is bool && (bool)res == true));
                 haveInited = true;
+
+                for (int i = 0; i < 50; i++)
+                {
+                    if (!zoomDone())
+                    {
+                        Thread.Sleep(100);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                    updateURLTemplates();
+
+                if (logger.IsDebugEnabled)
+                    logger.Debug("init is complete");
             }));
+        }
+
+        private void updateURLTemplates()
+        {
+            var jstiles = getCurrentTileURLs();
+            getTemplateUrls(jstiles, out mapUrlTemplates, out overlayUrlTemplates);
         }
 
 
@@ -214,116 +248,72 @@ namespace BruTile.GoogleMaps
 
         public Extent GetExtentOfTilesInView(Extent extent, int level)
         {
-            waitForLoad();
-
-            /*We need to expand the extent to the extent in "whole" tiles since our webbrowsercontrol shows that..*/
-            extent = AdjustExtentToTiles(extent, level);
-
-            /*Get mapWidth in pixels*/
             setExtent(extent.MinX, extent.MinY, extent.MaxX, extent.MaxY, level);
-
-            int minPxX = 0;
-            int maxPxX = m_WebBrowser.Width;
-            int minPxY = 0;
-            int maxPxY = m_WebBrowser.Height;
-
-            var tis = getCurrentTileURLs();
-            foreach (var ti in tis)
-            {
-                if (ti.Left < minPxX)
-                    minPxX = ti.Left;
-                if (ti.Left + Width > maxPxX)
-                    maxPxX = ti.Left + Width;
-                if (ti.Top < minPxY)
-                    minPxY = ti.Top;
-                if (ti.Top + Height > maxPxY)
-                    maxPxY = ti.Top + Height;
-            }
-
-            var ext = new Extent(extent.MinX - minPxX * Resolutions[level].UnitsPerPixel,
-                extent.MinY - (maxPxY - m_WebBrowser.Height) * Resolutions[level].UnitsPerPixel,
-                extent.MaxX + (maxPxX - m_WebBrowser.Width) * Resolutions[level].UnitsPerPixel,
-                extent.MaxY - (minPxY) * Resolutions[level].UnitsPerPixel);
-            return ext;
+            return m_baseSchema.GetExtentOfTilesInView(extent, level);
         }
-
-        private Extent AdjustExtentToTiles(Extent extent, int level)
-        {
-            int w = (int)Math.Ceiling(extent.Width / Resolutions[level].UnitsPerPixel);
-            int h = (int)Math.Ceiling(extent.Height / Resolutions[level].UnitsPerPixel);
-
-            //Make sure we have a width that is atleast 2 tiles bigger than the extent..
-            w = (int)(256 * (Math.Floor(w / 256.0) +2));
-            h = (int)(256 * (Math.Floor(h / 256.0) +2));
-
-            if (w > 5000)
-                w = 5000;
-            if (h > 5000)
-                h = 5000;
-
-            setSize(w, h);
-            double dw = w * Resolutions[level].UnitsPerPixel;
-            double dh = h * Resolutions[level].UnitsPerPixel;
-
-            extent = new BruTile.Extent(extent.CenterX - dw / 2, extent.CenterY - dh / 2, extent.CenterX + dw / 2, extent.CenterY + dh / 2);
-            return extent;
-        }
-
 
         public void SetSize(int w, int h)
         {
 
-            System.Diagnostics.Debug.WriteLine("Setting size to: " + w + " , " + h);
+            if (logger.IsDebugEnabled)
+                logger.Debug("Setting size to: " + w + " , " + h);
+
             setSize(w, h);
         }
 
         public IEnumerable<BruTile.TileInfo> GetTilesInView(Extent extent, double resolution)
         {
+            
+
             int level = Utilities.GetNearestLevel(Resolutions, resolution);
             return GetTilesInView(extent, level);
         }
 
         Regex rex = new Regex(@"x=(?<x>\d+).*?&y=(?<y>\d+).*?&z=(?<z>\d+)", RegexOptions.IgnoreCase);
+        BruTile.PreDefined.SphericalMercatorInvertedWorldSchema m_baseSchema = new SphericalMercatorInvertedWorldSchema();
         public IEnumerable<BruTile.TileInfo> GetTilesInView(Extent extent, int level)
         {
-            waitForLoad();
+            setExtent(extent.MinX, extent.MinY, extent.MaxX, extent.MaxY, level);
 
+            if (mapUrlTemplates == null || mapUrlTemplates.Length == 0)
+                updateURLTemplates();
 
-            /*We need to expand the extent to the extent in "whole" tiles since our webbrowsercontrol shows that..*/
-            extent = AdjustExtentToTiles(extent, level);
+            return m_baseSchema.GetTilesInView(extent, level);
+        }
 
-
-            extent = setExtent(extent.MinX, extent.MinY, extent.MaxX, extent.MaxY, level);
-
-
-            List<BruTile.TileInfo> tis = new List<BruTile.TileInfo>();
-            bool tilesLoaded = false;
-            int lc = 0;
-            while (!tilesLoaded)
+        Regex sMatch = new Regex("&s=.*?&");
+        Regex tokenMatch = new Regex("&token=\\d*?&");
+        private void getTemplateUrls(jsTileInfo[] tiles, out string[] mapUrlTemplates, out string[] overlayUrlTemplates)
+        {
+            List<string> baseUrls = new List<string>();
+            List<string> overlayUrls = new List<string>();
+            foreach (var ti in tiles)
             {
-                tis.Clear();
-                var tiles = getCurrentTileURLs();
-                extent = parseTiles(extent, level, tis, tiles);
-
-                int expectedNumTiles = curHeight / 256 * curWidth / 256;
-                if (_mapType == GoogleV3TileSource.MapTypeId.HYBRID)
-                    expectedNumTiles *= 2;
-
-                if (tis.Count >= expectedNumTiles || lc > 10)
+                Match m = rex.Match(ti.Url);
+                if (m.Success)
                 {
-                    System.Diagnostics.Debug.WriteLine("Expected: " + expectedNumTiles + " tiles and got: " + tis.Count + ", done!");
-                    tilesLoaded = true;
-                }
-                else
-                {
-                    lc++;
-                    System.Diagnostics.Debug.WriteLine("Expected: " + expectedNumTiles + " tiles and got: " + tis.Count + ", retrying[" + lc + "!");
-                    Application.DoEvents();
-                    Thread.Sleep(500);
+                    string url = ti.Url;
+                    url = url.Replace("x=" + m.Groups["x"].Value, "x={0}");
+                    url = url.Replace("y=" + m.Groups["y"].Value, "y={1}");
+                    url = url.Replace("z=" + m.Groups["z"].Value, "z={2}");
+                    if (url.Contains("&s="))
+                        url = sMatch.Replace(url, "&s={3}&");
+                    if (url.Contains("&token="))
+                        url = tokenMatch.Replace(url, "&token={4}&");
+
+                    if (_mapType == GoogleV3TileSource.MapTypeId.HYBRID && url.StartsWith("http://mt"))
+                    {
+                        overlayUrls.Add(url);
+                    }
+                    else
+                    {
+                        if (!baseUrls.Contains(url))
+                            baseUrls.Add(url);
+                    }
                 }
             }
-
-            return tis;
+            mapUrlTemplates = baseUrls.ToArray();
+            overlayUrlTemplates = overlayUrls.ToArray();
         }
 
         private Extent parseTiles(Extent extent, int level, List<BruTile.TileInfo> tis, jsTileInfo[] tiles)
@@ -373,7 +363,7 @@ namespace BruTile.GoogleMaps
         Resolution[] getResolutions()
         {
             string result = null;
-            lock (m_WebBrowser)
+            lock (locker)
             {
                 try
                 {
@@ -382,8 +372,9 @@ namespace BruTile.GoogleMaps
                         result = m_WebBrowser.Document.InvokeScript("getResolutions") as string;
                     }));
                 }
-                catch
+                catch (Exception ee)
                 {
+                    logger.Warn(ee.Message, ee);
                     try
                     {
                         m_WebBrowser.Invoke(new MethodInvoker(delegate
@@ -391,8 +382,10 @@ namespace BruTile.GoogleMaps
                             result = m_WebBrowser.Document.InvokeScript("getResolutions") as string;
                         }));
                     }
-                    catch
-                    { }
+                    catch (Exception ee2)
+                    {
+                        logger.Warn("Again: " + ee2.Message, ee2);
+                    }
                 }
             }
             string[] parts = result.Split(',');
@@ -417,7 +410,7 @@ namespace BruTile.GoogleMaps
         private jsTileInfo[] getCurrentTileURLs()
         {
             object ret = null;
-            lock (m_WebBrowser)
+            lock (locker)
             {
                 try
                 {
@@ -426,8 +419,9 @@ namespace BruTile.GoogleMaps
                         ret = m_WebBrowser.Document.InvokeScript("getTileURLs");
                     }));
                 }
-                catch
+                catch (Exception ee)
                 {
+                    logger.Warn(ee.Message, ee);
                     try
                     {
                         m_WebBrowser.Invoke(new MethodInvoker(delegate
@@ -435,8 +429,10 @@ namespace BruTile.GoogleMaps
                             ret = m_WebBrowser.Document.InvokeScript("getTileURLs");
                         }));
                     }
-                    catch
-                    { }
+                    catch (Exception ee2)
+                    {
+                        logger.Warn("Exception again: " + ee2.Message, ee2);
+                    }
                 }
                     
             }
@@ -475,8 +471,11 @@ namespace BruTile.GoogleMaps
         {
             if (curWidth != width || curHeight != height)
             {
+                if (logger.IsDebugEnabled)
+                    logger.DebugFormat("Into setSize {0} {1}", width, height);
+
                 string size;
-                lock (m_WebBrowser)
+                lock (locker)
                 {
                     try
                     {
@@ -486,8 +485,9 @@ namespace BruTile.GoogleMaps
                                 size = m_WebBrowser.Document.InvokeScript("updateSize", new object[] { width, height }) as string;
                             }));
                     }
-                    catch
+                    catch (Exception ee)
                     {
+                        logger.Warn(ee.Message, ee);
                         try
                         {
                             m_WebBrowser.Invoke(new MethodInvoker(delegate
@@ -496,8 +496,10 @@ namespace BruTile.GoogleMaps
                                 size = m_WebBrowser.Document.InvokeScript("updateSize", new object[] { width, height }) as string;
                             }));
                         }
-                        catch
-                        { }
+                        catch (Exception ee2)
+                        {
+                            logger.Warn("Exception again: " + ee2.Message, ee2);
+                        }
                     }
                 }
                 curWidth = width;
@@ -513,11 +515,15 @@ namespace BruTile.GoogleMaps
         /// <param name="ymin"></param>
         /// <param name="xmax"></param>
         /// <param name="ymax"></param>
-        Extent setExtent(double xmin, double ymin, double xmax, double ymax, int level)
+        void setExtent(double xmin, double ymin, double xmax, double ymax, int level)
         {
-            string ext = null;
-            lock (m_WebBrowser)
+            if (logger.IsDebugEnabled)
+                logger.DebugFormat("setExtent {0},{1},{2},{3},{4}", xmin, ymin, xmax, ymax, level);
+
+            lock (locker)
             {
+                if (logger.IsDebugEnabled)
+                    logger.Debug("Into lock");
                 try
                 {
                     m_WebBrowser.Invoke(new MethodInvoker(delegate
@@ -525,8 +531,9 @@ namespace BruTile.GoogleMaps
                         m_WebBrowser.Document.InvokeScript("setExtent", new object[] { xmin, ymin, xmax, ymax, level });
                     }));
                 }
-                catch 
+                catch (Exception ee)
                 {
+                    logger.Warn(ee.Message, ee);
                     //Try again, there are some things with the webbrowsercontrol that throws exceptions sometimes..
                     try
                     {
@@ -535,14 +542,14 @@ namespace BruTile.GoogleMaps
                             m_WebBrowser.Document.InvokeScript("setExtent", new object[] { xmin, ymin, xmax, ymax, level });
                         }));
                     }
-                    catch
-                    { }
+                    catch (Exception ee2)
+                    {
+                        logger.Warn("Exception again: " + ee2.Message, ee2);
+                    }
                 }
+            }
 
-                Application.DoEvents();
-
-                //System.IO.File.AppendAllText("c:\\temp\\mapactions.txt", DateTime.Now.ToString() + "\r\nmap.setCenter(new OpenLayers.LonLat(" + ((xmin + xmax) / 2) + ", " + ((ymin + ymax) / 2) + "), " + level + ", true, false);\r\n");
-
+                /*Application.DoEvents();
                 //Wait for zooming to end
                 for (int i = 0; i < 50; i++)
                 {
@@ -564,8 +571,9 @@ namespace BruTile.GoogleMaps
                         ext = m_WebBrowser.Document.InvokeScript("getExtent") as string;
                     }));
                 }
-                catch
+                catch (Exception ee)
                 {
+                    logger.Warn(ee.Message, ee);
                     try
                     {
                         m_WebBrowser.Invoke(new MethodInvoker(delegate
@@ -573,17 +581,23 @@ namespace BruTile.GoogleMaps
                             ext = m_WebBrowser.Document.InvokeScript("getExtent") as string;
                         }));
                     }
-                    catch
-                    { }
+                    catch (Exception ee2)
+                    {
+                        logger.Warn("Exception again " + ee2.Message, ee2); 
+                    }
                 }
             }
+
+            if (logger.IsDebugEnabled)
+                logger.Debug("outof lock");
 
             string[] parts = ext.Split(',');
             return new Extent(Convert.ToDouble(parts[0], CultureInfo.InvariantCulture),
                 Convert.ToDouble(parts[1], CultureInfo.InvariantCulture),
                 Convert.ToDouble(parts[2], CultureInfo.InvariantCulture),
-                Convert.ToDouble(parts[3], CultureInfo.InvariantCulture));
+                Convert.ToDouble(parts[3], CultureInfo.InvariantCulture));*/
         }
+
         bool zoomDone()
         {
             bool done = false;
@@ -595,8 +609,9 @@ namespace BruTile.GoogleMaps
                     done = (bool)m_WebBrowser.Document.InvokeScript("isZoomDone");
                 }));
             }
-            catch
+            catch (Exception ee)
             {
+                logger.Warn(ee.Message, ee);
                 try
                 {
                     m_WebBrowser.Invoke(new MethodInvoker(delegate
@@ -604,8 +619,10 @@ namespace BruTile.GoogleMaps
                         done = (bool)m_WebBrowser.Document.InvokeScript("isZoomDone");
                     }));
                 }
-                catch
-                { }
+                catch (Exception ee2)
+                {
+                    logger.Warn("Exception again " + ee2.Message, ee);
+                }
             }
 
             System.Diagnostics.Debug.WriteLine("ZoomDone: " + done);
@@ -650,7 +667,7 @@ namespace BruTile.GoogleMaps
                 return true;
 
             bool done = false;
-            lock (m_WebBrowser)
+            lock (locker)
             {
                 try
                 {

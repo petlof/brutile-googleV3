@@ -17,7 +17,7 @@ namespace GoogleMapsTest
         BruTile.GoogleMaps.GoogleV3TileSource ts;
         public Form1()
         {
-            ts = new BruTile.GoogleMaps.GoogleV3TileSource( BruTile.GoogleMaps.GoogleV3TileSource.MapTypeId.HYBRID);
+            ts = new BruTile.GoogleMaps.GoogleV3TileSource(BruTile.GoogleMaps.GoogleV3TileSource.MapTypeId.ROADMAP);
             InitializeComponent();
             SharpMap.Layers.TileLayer tl = new SharpMap.Layers.TileLayer(ts, "Google");
 
@@ -46,7 +46,7 @@ namespace GoogleMapsTest
                 //{
                 //    Thread.Sleep(100);
                 //}
-                
+
                 //frm.Close();
                 //frm.Dispose();
             }
@@ -56,5 +56,31 @@ namespace GoogleMapsTest
         {
             ts.Dispose();
         }
+
+        private void button3_Click(object sender, EventArgs e)
+        {
+            for (int i = 0; i < 10; i++)
+            {
+                Thread th = new Thread(new ThreadStart(delegate
+                {
+                    RunTest();
+                }
+                ));
+                th.Name = "T" + i;
+                th.Start();
+            }
+        }
+
+        private void RunTest()
+        {
+            for (int i = 0; i < 1000; i++)
+            {
+                mapBox1.Refresh();
+                Application.DoEvents();
+                Thread.Sleep(1000);
+                System.Diagnostics.Debug.WriteLine("Thread " + Thread.CurrentThread.Name + " , " + i);
+            }
+        }
+
     }
 }

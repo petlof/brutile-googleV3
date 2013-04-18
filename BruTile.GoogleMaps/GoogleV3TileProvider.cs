@@ -23,6 +23,7 @@ using System.Linq;
 using System.Text;
 using System.Net;
 using System.IO;
+using System.Drawing.Imaging;
 
 namespace BruTile.GoogleMaps
 {
@@ -30,45 +31,108 @@ namespace BruTile.GoogleMaps
     {
         public const string UserAgent = @"Mozilla/5.0 (Windows; U; Windows NT 6.0; en-US; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7";
         private string Referer;
+        private GoogleV3TileSchema _tileSchema;
 
-        public GoogleV3TileProvider(string referer = "http://localhost")
+        public GoogleV3TileProvider(GoogleV3TileSchema tileSchema, string referer = "http://localhost")
         {
             this.Referer = referer;
+            _tileSchema = tileSchema;
         }
 
+        string secword = "Galileo";
+        string calculateSParam(int x, int y)
+        {
+            int seclen = (3 * x + y) % 8;
+            string sec = secword.Substring(0, seclen);
+            return sec;
+        }
+
+        Random r = new Random();
         public byte[] GetTile(BruTile.TileInfo tileInfo)
         {
-            if (!(tileInfo is GoogleV3TileInfo))
-                throw new ApplicationException("Need to get GoogleV3TileInfo as param");
+            string url = _tileSchema.mapUrlTemplates[r.Next(0, _tileSchema.mapUrlTemplates.Length - 1)];
+            url = string.Format(url, tileInfo.Index.Col, tileInfo.Index.Row, tileInfo.Index.Level, calculateSParam(tileInfo.Index.Col, tileInfo.Index.Row));
 
-            var gti = tileInfo as GoogleV3TileInfo;
+            
+            byte[] data = Fetch(url);
 
-            var cacheEntry = WebCacheTool.WinInetAPI.GetUrlCacheEntryInfo(gti.Url);
-            byte[] data = null;
-            if (!string.IsNullOrEmpty(cacheEntry.lpszLocalFileName))
+            if (_tileSchema._mapType == GoogleV3TileSource.MapTypeId.HYBRID)
             {
-                data = System.IO.File.ReadAllBytes(cacheEntry.lpszLocalFileName);
-            }
-            else
-            {
-                WebRequest wq = HttpWebRequest.Create(gti.Url);
-                (wq as HttpWebRequest).UserAgent = UserAgent;
-                (wq as HttpWebRequest).Referer = Referer;
-                WebResponse resp = wq.GetResponse();
+                string overlayurl = _tileSchema.overlayUrlTemplates[r.Next(0, _tileSchema.overlayUrlTemplates.Length - 1)];
+                overlayurl = string.Format(overlayurl, tileInfo.Index.Col, tileInfo.Index.Row, tileInfo.Index.Level, calculateSParam(tileInfo.Index.Col, tileInfo.Index.Row));
+                byte[] overlayData = Fetch(overlayurl);
 
-                Stream s = resp.GetResponseStream();
-
-                int toRead = (int)resp.ContentLength;
-                int numRead = 0;
-                data = new byte[toRead];
-                do
+                using (MemoryStream ms = new MemoryStream(data))
                 {
-                    int nr = s.Read(data, numRead, toRead - numRead);
-                    numRead += nr;
-                } while (numRead < toRead);
+                    using (MemoryStream ms2 = new MemoryStream(overlayData))
+                    {
+                        System.Drawing.Image img = new System.Drawing.Bitmap(ms);
+                        System.Drawing.Image overlayimg = new System.Drawing.Bitmap(ms2);
+                        using (System.Drawing.Graphics g = System.Drawing.Graphics.FromImage(img))
+                        {
+                            g.DrawImage(overlayimg, 0, 0);
+                        }
 
-                resp.Close();
+                        using (MemoryStream newMs = new MemoryStream())
+                        {
+
+                            ImageCodecInfo jgpEncoder = GetEncoder(ImageFormat.Jpeg);
+                            System.Drawing.Imaging.Encoder myEncoder =
+                                System.Drawing.Imaging.Encoder.Quality;
+                            EncoderParameters myEncoderParameters = new EncoderParameters(1);
+                            EncoderParameter myEncoderParameter = new EncoderParameter(myEncoder,
+                                90L);
+                            myEncoderParameters.Param[0] = myEncoderParameter;
+                            img.Save(newMs, jgpEncoder, myEncoderParameters);
+
+
+                            newMs.Seek(0, SeekOrigin.Begin);
+                            data = new byte[newMs.Length];
+                            newMs.Read(data, 0, data.Length);
+                            newMs.Close();
+                        }
+                        ms2.Close();
+                    }
+                    ms.Close();
+                }
             }
+
+
+            return data;
+        }
+
+        private ImageCodecInfo GetEncoder(ImageFormat format)
+        {
+            ImageCodecInfo[] codecs = ImageCodecInfo.GetImageDecoders();
+            foreach (ImageCodecInfo codec in codecs)
+            {
+                if (codec.FormatID == format.Guid)
+                {
+                    return codec;
+                }
+            }
+            return null;
+        }
+
+        private byte[] Fetch(string url)
+        {
+            WebRequest wq = HttpWebRequest.Create(url);
+            (wq as HttpWebRequest).UserAgent = UserAgent;
+            (wq as HttpWebRequest).Referer = Referer;
+            WebResponse resp = wq.GetResponse();
+
+            Stream s = resp.GetResponseStream();
+
+            int toRead = (int)resp.ContentLength;
+            int numRead = 0;
+            byte[] data = new byte[toRead];
+            do
+            {
+                int nr = s.Read(data, numRead, toRead - numRead);
+                numRead += nr;
+            } while (numRead < toRead);
+
+            resp.Close();
             return data;
         }
     }

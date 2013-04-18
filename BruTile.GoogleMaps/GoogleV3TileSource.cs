@@ -46,9 +46,9 @@ namespace BruTile.GoogleMaps
         {
             _tileSchema = new GoogleMaps.GoogleV3TileSchema(googleClientID, googleChannel, baseUrl, mapType);
             if (!string.IsNullOrEmpty(baseUrl))
-                _googleMapsTP = new GoogleMaps.GoogleV3TileProvider();
+                _googleMapsTP = new GoogleMaps.GoogleV3TileProvider(_tileSchema);
             else
-                _googleMapsTP = new GoogleMaps.GoogleV3TileProvider(baseUrl);
+                _googleMapsTP = new GoogleMaps.GoogleV3TileProvider(_tileSchema, baseUrl);
 
         }
 
