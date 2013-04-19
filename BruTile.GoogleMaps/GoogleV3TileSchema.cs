@@ -46,6 +46,8 @@ namespace BruTile.GoogleMaps
         internal string[] mapUrlTemplates = null;
         internal string[] overlayUrlTemplates = null;
 
+        static Dictionary<string, string[]> _cachedURLs = new Dictionary<string, string[]>();
+
         static readonly ILog logger = LogManager.GetLogger(typeof(GoogleV3TileSchema));
 
         public GoogleV3TileSchema(string gmeClientID, string googleChannel, string referer, GoogleV3TileSource.MapTypeId mapType)
@@ -64,7 +66,16 @@ namespace BruTile.GoogleMaps
             this.gmeClientID = gmeClientID;
             this.googleChannel = googleChannel;
             this.referer = referer;
+            if (_cachedURLs.ContainsKey(mapType.ToString() + "_base"))
+            {
+                mapUrlTemplates = _cachedURLs[mapType.ToString() + "_base"];
+            }
+            if (_cachedURLs.ContainsKey(mapType.ToString() + "_overlay"))
+            {
+                overlayUrlTemplates = _cachedURLs[mapType.ToString() + "_overlay"];
+            }
             appContext = new ApplicationContext();
+            
             wbThread = new Thread(() =>
             {
                 //Form f = new Form();
@@ -142,47 +153,47 @@ namespace BruTile.GoogleMaps
             page += "<script type=\"text/javascript\">" + getWrapperCode() + "</script>";
             page += "</body></html>";
 
-                //Clear body
-                HtmlElement htEl = m_WebBrowser.Document.CreateElement("script");
-                htEl.SetAttribute("type", "text/javascript");
-                Type t = htEl.DomElement.GetType();
-                t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[] { "function modContent() {while (document.getElementsByTagName(\"META\").length > 0) {document.getElementsByTagName(\"head\")[0].removeChild(document.getElementsByTagName(\"META\")[0]);}  if (document.body) {document.body.innerHTML = \"\";}} " });
-                m_WebBrowser.Document.Body.AppendChild(htEl);
-                m_WebBrowser.Document.InvokeScript("modContent");
+            //Clear body
+            HtmlElement htEl = m_WebBrowser.Document.CreateElement("script");
+            htEl.SetAttribute("type", "text/javascript");
+            Type t = htEl.DomElement.GetType();
+            t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[] { "function modContent() {while (document.getElementsByTagName(\"META\").length > 0) {document.getElementsByTagName(\"head\")[0].removeChild(document.getElementsByTagName(\"META\")[0]);}  if (document.body) {document.body.innerHTML = \"\";}} " });
+            m_WebBrowser.Document.Body.AppendChild(htEl);
+            m_WebBrowser.Document.InvokeScript("modContent");
 
 
-                htEl = m_WebBrowser.Document.CreateElement("script");
-                htEl.SetAttribute("type", "text/javascript");
-                t = htEl.DomElement.GetType();
-                t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[] { "function addGoogle() { var sc = document.createElement(\"SCRIPT\"); sc.type=\"text/javascript\"; sc.src=\"" + googleURL + "\";document.body.appendChild(sc);}" });
-                m_WebBrowser.Document.Body.AppendChild(htEl);
+            htEl = m_WebBrowser.Document.CreateElement("script");
+            htEl.SetAttribute("type", "text/javascript");
+            t = htEl.DomElement.GetType();
+            t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[] { "function addGoogle() { var sc = document.createElement(\"SCRIPT\"); sc.type=\"text/javascript\"; sc.src=\"" + googleURL + "\";document.body.appendChild(sc);}" });
+            m_WebBrowser.Document.Body.AppendChild(htEl);
 
-                m_WebBrowser.Document.InvokeScript("addGoogle");
+            m_WebBrowser.Document.InvokeScript("addGoogle");
 
-                htEl = m_WebBrowser.Document.CreateElement("script");
-                htEl.SetAttribute("type", "text/javascript");
-                t = htEl.DomElement.GetType();
-                t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[] { "baseLayer = \"google.maps.MapTypeId." + _mapType.ToString() + "\";" + getOpenLayersCode() });
-                m_WebBrowser.Document.Body.AppendChild(htEl);
+            htEl = m_WebBrowser.Document.CreateElement("script");
+            htEl.SetAttribute("type", "text/javascript");
+            t = htEl.DomElement.GetType();
+            t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[] { "baseLayer = \"google.maps.MapTypeId." + _mapType.ToString() + "\";" + getOpenLayersCode() });
+            m_WebBrowser.Document.Body.AppendChild(htEl);
 
-                htEl = m_WebBrowser.Document.CreateElement("script");
-                htEl.SetAttribute("type", "text/javascript");
-                t = htEl.DomElement.GetType();
-                t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[] { getWrapperCode() });
-                m_WebBrowser.Document.Body.AppendChild(htEl);
+            htEl = m_WebBrowser.Document.CreateElement("script");
+            htEl.SetAttribute("type", "text/javascript");
+            t = htEl.DomElement.GetType();
+            t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[] { getWrapperCode() });
+            m_WebBrowser.Document.Body.AppendChild(htEl);
 
-                htEl = m_WebBrowser.Document.CreateElement("style");
-                htEl.SetAttribute("type", "text/css");
-                t = htEl.DomElement.GetType();
-                var mi = t.GetMethods().Where(x => x.Name.Contains("style")).FirstOrDefault();
-                object it = t.InvokeMember("styleSheet", BindingFlags.GetProperty, null, htEl.DomElement, null);
-                t = it.GetType();
-                t.InvokeMember("cssText", BindingFlags.SetProperty, null, it, new object[] { "BODY { margin: 0px; padding: 0px;} #map { width: 600px; height: 400px; border: 0px;}" });
-                m_WebBrowser.Document.GetElementsByTagName("head")[0].AppendChild(htEl);
+            htEl = m_WebBrowser.Document.CreateElement("style");
+            htEl.SetAttribute("type", "text/css");
+            t = htEl.DomElement.GetType();
+            var mi = t.GetMethods().Where(x => x.Name.Contains("style")).FirstOrDefault();
+            object it = t.InvokeMember("styleSheet", BindingFlags.GetProperty, null, htEl.DomElement, null);
+            t = it.GetType();
+            t.InvokeMember("cssText", BindingFlags.SetProperty, null, it, new object[] { "BODY { margin: 0px; padding: 0px;} #map { width: 600px; height: 400px; border: 0px;}" });
+            m_WebBrowser.Document.GetElementsByTagName("head")[0].AppendChild(htEl);
 
-                htEl = m_WebBrowser.Document.CreateElement("div");
-                htEl.Id = "map";
-                m_WebBrowser.Document.Body.AppendChild(htEl);
+            htEl = m_WebBrowser.Document.CreateElement("div");
+            htEl.Id = "map";
+            m_WebBrowser.Document.Body.AppendChild(htEl);
 
             ThreadPool.QueueUserWorkItem(new WaitCallback(delegate
             {
@@ -208,6 +219,17 @@ namespace BruTile.GoogleMaps
                 while (!(res is bool && (bool)res == true));
                 haveInited = true;
 
+                updateURLTemplates();
+
+                if (logger.IsDebugEnabled)
+                    logger.Debug("init is complete");
+            }));
+        }
+
+        private void updateURLTemplates()
+        {
+            if (mapUrlTemplates == null || mapUrlTemplates.Length == 0)
+            {
                 for (int i = 0; i < 50; i++)
                 {
                     if (!zoomDone())
@@ -219,17 +241,32 @@ namespace BruTile.GoogleMaps
                         break;
                     }
                 }
-                    updateURLTemplates();
 
-                if (logger.IsDebugEnabled)
-                    logger.Debug("init is complete");
-            }));
-        }
-
-        private void updateURLTemplates()
-        {
-            var jstiles = getCurrentTileURLs();
-            getTemplateUrls(jstiles, out mapUrlTemplates, out overlayUrlTemplates);
+                for (int i = 0; i < 50; i++)
+                {
+                    var jstiles = getCurrentTileURLs();
+                    getTemplateUrls(jstiles, out mapUrlTemplates, out overlayUrlTemplates);
+                    if (mapUrlTemplates == null || mapUrlTemplates.Length == 0)
+                    {
+                        Thread.Sleep(100);
+                    }
+                    else
+                    {
+                        lock (_cachedURLs)
+                        {
+                            if (!_cachedURLs.ContainsKey(_mapType.ToString() + "_base"))
+                            {
+                                _cachedURLs.Add(_mapType.ToString() + "_base", mapUrlTemplates);
+                            }
+                            if (overlayUrlTemplates != null && overlayUrlTemplates.Length > 0 && !_cachedURLs.ContainsKey(_mapType.ToString() + "_overlay"))
+                            {
+                                _cachedURLs.Add(_mapType.ToString() + "_overlay", overlayUrlTemplates);
+                            }
+                        }
+                        break;
+                        }
+                }
+            }
         }
 
 

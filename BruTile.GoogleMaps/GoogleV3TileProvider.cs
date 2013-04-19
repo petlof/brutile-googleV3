@@ -24,6 +24,7 @@ using System.Text;
 using System.Net;
 using System.IO;
 using System.Drawing.Imaging;
+using System.Globalization;
 
 namespace BruTile.GoogleMaps
 {
@@ -55,12 +56,16 @@ namespace BruTile.GoogleMaps
 
             
             byte[] data = Fetch(url);
+            //byte[] data = BruTile.Web.RequestHelper.FetchImage(new Uri(url), UserAgent, Referer, true);
 
             if (_tileSchema._mapType == GoogleV3TileSource.MapTypeId.HYBRID)
             {
                 string overlayurl = _tileSchema.overlayUrlTemplates[r.Next(0, _tileSchema.overlayUrlTemplates.Length - 1)];
                 overlayurl = string.Format(overlayurl, tileInfo.Index.Col, tileInfo.Index.Row, tileInfo.Index.Level, calculateSParam(tileInfo.Index.Col, tileInfo.Index.Row));
                 byte[] overlayData = Fetch(overlayurl);
+                //byte[] overlayData = BruTile.Web.RequestHelper.FetchImage(new Uri(overlayurl), UserAgent, Referer, true);
+
+                
 
                 using (MemoryStream ms = new MemoryStream(data))
                 {
@@ -117,11 +122,30 @@ namespace BruTile.GoogleMaps
         private byte[] Fetch(string url)
         {
             WebRequest wq = HttpWebRequest.Create(url);
+
             (wq as HttpWebRequest).UserAgent = UserAgent;
             (wq as HttpWebRequest).Referer = Referer;
+
+            (wq as HttpWebRequest).KeepAlive = false;
+            (wq as HttpWebRequest).AllowAutoRedirect = true;
+            (wq as HttpWebRequest).Timeout = 5000;
+
             WebResponse resp = wq.GetResponse();
 
-            Stream s = resp.GetResponseStream();
+            if (resp.ContentType.StartsWith("image", StringComparison.OrdinalIgnoreCase))
+            {
+                using (Stream responseStream = resp.GetResponseStream())
+                {
+                    return Utilities.ReadFully(responseStream);
+                }
+            }
+            else
+            {
+                string message = ComposeErrorMessage(resp, url);
+                throw (new BruTile.Web.WebResponseFormatException(message, null));
+            }
+
+            /*Stream s = resp.GetResponseStream();
 
             int toRead = (int)resp.ContentLength;
             int numRead = 0;
@@ -133,7 +157,39 @@ namespace BruTile.GoogleMaps
             } while (numRead < toRead);
 
             resp.Close();
-            return data;
+            return data;*/
+        }
+
+        private static string ComposeErrorMessage(WebResponse webResponse, string uri)
+        {
+            string message = String.Format(
+                CultureInfo.InvariantCulture,
+                "Failed to retrieve tile from this uri:\n{0}\n.An image was expected but the received type was '{1}'.",
+                uri,
+                webResponse.ContentType
+            );
+
+            if (webResponse.ContentType.StartsWith("text", StringComparison.OrdinalIgnoreCase))
+            {
+                using (Stream stream = webResponse.GetResponseStream())
+                {
+                    message += String.Format(CultureInfo.InvariantCulture,
+                      "\nThis was returned:\n{0}", ReadAllText(stream));
+                }
+            }
+            return message;
+        }
+
+        private static string ReadAllText(Stream responseStream)
+        {
+            using (var streamReader = new StreamReader(responseStream, true))
+            {
+                using (var stringWriter = new StringWriter(CultureInfo.InvariantCulture))
+                {
+                    stringWriter.Write(streamReader.ReadToEnd());
+                    return stringWriter.ToString();
+                }
+            }
         }
     }
 }
