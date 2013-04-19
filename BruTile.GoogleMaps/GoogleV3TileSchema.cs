@@ -389,7 +389,12 @@ namespace BruTile.GoogleMaps
                 }
             }
             string[] parts = result.Split(',');
-            Resolution[] ret = new Resolution[parts.Length];
+            int numResolutions = parts.Length;
+            if (_mapType == GoogleV3TileSource.MapTypeId.TERRAIN)
+                numResolutions = 15;
+            else
+                numResolutions = 19;
+            Resolution[] ret = new Resolution[numResolutions];
             for (int i = 0; i < ret.Length; i++)
             {
                 var res = Convert.ToDouble(parts[i], CultureInfo.InvariantCulture);
