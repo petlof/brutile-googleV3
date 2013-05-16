@@ -56,16 +56,12 @@ namespace BruTile.GoogleMaps
 
             
             byte[] data = Fetch(url);
-            //byte[] data = BruTile.Web.RequestHelper.FetchImage(new Uri(url), UserAgent, Referer, true);
 
             if (_tileSchema._mapType == GoogleV3TileSource.MapTypeId.HYBRID)
             {
                 string overlayurl = _tileSchema.overlayUrlTemplates[r.Next(0, _tileSchema.overlayUrlTemplates.Length - 1)];
                 overlayurl = string.Format(overlayurl, tileInfo.Index.Col, tileInfo.Index.Row, tileInfo.Index.Level, calculateSParam(tileInfo.Index.Col, tileInfo.Index.Row));
-                byte[] overlayData = Fetch(overlayurl);
-                //byte[] overlayData = BruTile.Web.RequestHelper.FetchImage(new Uri(overlayurl), UserAgent, Referer, true);
-
-                
+                byte[] overlayData = Fetch(overlayurl);                
 
                 using (MemoryStream ms = new MemoryStream(data))
                 {

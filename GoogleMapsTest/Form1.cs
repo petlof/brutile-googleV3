@@ -20,7 +20,7 @@ namespace GoogleMapsTest
             //ThreadPool.SetMinThreads(20, 6);
             //ThreadPool.SetMaxThreads(50,30);
             
-            ts = new BruTile.GoogleMaps.GoogleV3TileSource(BruTile.GoogleMaps.GoogleV3TileSource.MapTypeId.ROADMAP);
+            ts = new BruTile.GoogleMaps.GoogleV3TileSource(BruTile.GoogleMaps.GoogleV3TileSource.MapTypeId.HYBRID);
             InitializeComponent();
             SharpMap.Layers.TileAsyncLayer tl = new SharpMap.Layers.TileAsyncLayer(ts, "Google");
 

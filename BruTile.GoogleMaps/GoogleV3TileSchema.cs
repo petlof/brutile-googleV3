@@ -320,6 +320,7 @@ namespace BruTile.GoogleMaps
 
         Regex sMatch = new Regex("&s=.*?&");
         Regex tokenMatch = new Regex("&token=\\d*?&");
+        Regex scaleMath = new Regex("&scale=\\d");
         private void getTemplateUrls(jsTileInfo[] tiles, out string[] mapUrlTemplates, out string[] overlayUrlTemplates)
         {
             List<string> baseUrls = new List<string>();
@@ -337,6 +338,8 @@ namespace BruTile.GoogleMaps
                         url = sMatch.Replace(url, "&s={3}&");
                     if (url.Contains("&token="))
                         url = tokenMatch.Replace(url, "&token={4}&");
+                    if (url.Contains("&scale="))
+                        url = scaleMath.Replace(url, "");
 
                     if (_mapType == GoogleV3TileSource.MapTypeId.HYBRID && url.StartsWith("http://mt"))
                     {
