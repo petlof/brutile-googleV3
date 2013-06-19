@@ -78,8 +78,6 @@ namespace BruTile.GoogleMaps
             
             wbThread = new Thread(() =>
             {
-                //Form f = new Form();
-                //f.Size = new System.Drawing.Size(600, 400);
                 try
                 {
                     m_WebBrowser = new System.Windows.Forms.WebBrowser();
@@ -216,13 +214,22 @@ namespace BruTile.GoogleMaps
                         Thread.Sleep(100);
                     }
                 }
-                while (!(res is bool && (bool)res == true));
-                haveInited = true;
+                while (appContext != null && !(res is bool && (bool)res == true));
 
-                updateURLTemplates();
+                if (appContext != null)
+                {
+                    haveInited = true;
+                    updateURLTemplates();
 
-                if (logger.IsDebugEnabled)
-                    logger.Debug("init is complete");
+                    if (logger.IsDebugEnabled)
+                        logger.Debug("init is complete");
+                }
+                else
+                {
+                    if (logger.IsDebugEnabled)
+                        logger.Debug("AppContext Destroyed before init");
+                }
+
             }));
         }
 
@@ -232,6 +239,11 @@ namespace BruTile.GoogleMaps
             {
                 for (int i = 0; i < 50; i++)
                 {
+                    if (appContext == null)
+                    {
+                        return;
+                    }
+
                     if (!zoomDone())
                     {
                         Thread.Sleep(100);
@@ -244,6 +256,8 @@ namespace BruTile.GoogleMaps
 
                 for (int i = 0; i < 50; i++)
                 {
+                    if (appContext == null)
+                        return;
                     var jstiles = getCurrentTileURLs();
                     getTemplateUrls(jstiles, out mapUrlTemplates, out overlayUrlTemplates);
                     if (mapUrlTemplates == null || mapUrlTemplates.Length == 0)
@@ -593,54 +607,6 @@ namespace BruTile.GoogleMaps
                     }
                 }
             }
-
-                /*Application.DoEvents();
-                //Wait for zooming to end
-                for (int i = 0; i < 50; i++)
-                {
-                    if (!zoomDone())
-                    {
-                        Application.DoEvents();
-                        Thread.Sleep(100);
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-
-                try
-                {
-                    m_WebBrowser.Invoke(new MethodInvoker(delegate
-                    {
-                        ext = m_WebBrowser.Document.InvokeScript("getExtent") as string;
-                    }));
-                }
-                catch (Exception ee)
-                {
-                    logger.Warn(ee.Message, ee);
-                    try
-                    {
-                        m_WebBrowser.Invoke(new MethodInvoker(delegate
-                        {
-                            ext = m_WebBrowser.Document.InvokeScript("getExtent") as string;
-                        }));
-                    }
-                    catch (Exception ee2)
-                    {
-                        logger.Warn("Exception again " + ee2.Message, ee2); 
-                    }
-                }
-            }
-
-            if (logger.IsDebugEnabled)
-                logger.Debug("outof lock");
-
-            string[] parts = ext.Split(',');
-            return new Extent(Convert.ToDouble(parts[0], CultureInfo.InvariantCulture),
-                Convert.ToDouble(parts[1], CultureInfo.InvariantCulture),
-                Convert.ToDouble(parts[2], CultureInfo.InvariantCulture),
-                Convert.ToDouble(parts[3], CultureInfo.InvariantCulture));*/
         }
 
         bool zoomDone()
@@ -649,10 +615,13 @@ namespace BruTile.GoogleMaps
             //Do Not LOCK here
             try
             {
-                m_WebBrowser.Invoke(new MethodInvoker(delegate
+                if (appContext != null)
                 {
-                    done = (bool)m_WebBrowser.Document.InvokeScript("isZoomDone");
-                }));
+                    m_WebBrowser.Invoke(new MethodInvoker(delegate
+                    {
+                        done = (bool)m_WebBrowser.Document.InvokeScript("isZoomDone");
+                    }));
+                }
             }
             catch (Exception ee)
             {
@@ -807,10 +776,9 @@ namespace BruTile.GoogleMaps
             {
                 appContext.ExitThread();
                 appContext = null;
+                if (m_WebBrowser != null)
+                    m_WebBrowser = null;
             }
-
-            
-            GC.SuppressFinalize(this);
         }
     }
 }

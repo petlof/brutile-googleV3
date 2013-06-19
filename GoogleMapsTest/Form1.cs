@@ -16,13 +16,11 @@ namespace GoogleMapsTest
     {
         BruTile.GoogleMaps.GoogleV3TileSource ts;
         public Form1()
-        {
-            //ThreadPool.SetMinThreads(20, 6);
-            //ThreadPool.SetMaxThreads(50,30);
-            
-            ts = new BruTile.GoogleMaps.GoogleV3TileSource(BruTile.GoogleMaps.GoogleV3TileSource.MapTypeId.HYBRID);
+        {            
+            ts = new BruTile.GoogleMaps.GoogleV3TileSource(BruTile.GoogleMaps.GoogleV3TileSource.MapTypeId.ROADMAP);
             InitializeComponent();
             SharpMap.Layers.TileAsyncLayer tl = new SharpMap.Layers.TileAsyncLayer(ts, "Google");
+            tl.OnlyRedrawWhenComplete = true;
 
             mapBox1.Map.BackgroundLayer.Add(tl);
             mapBox1.Map.ZoomToBox(new GeoAPI.Geometries.Envelope(-1500000, 4250000, 4500000, 12500000));
