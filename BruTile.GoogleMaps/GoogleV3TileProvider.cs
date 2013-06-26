@@ -25,11 +25,14 @@ using System.Net;
 using System.IO;
 using System.Drawing.Imaging;
 using System.Globalization;
+using Common.Logging;
 
 namespace BruTile.GoogleMaps
 {
     public class GoogleV3TileProvider : BruTile.ITileProvider
     {
+        private static readonly ILog logger = LogManager.GetLogger(typeof(GoogleV3TileProvider));
+
         public const string UserAgent = @"Mozilla/5.0 (Windows; U; Windows NT 6.0; en-US; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7";
         private string Referer;
         private GoogleV3TileSchema _tileSchema;
@@ -51,9 +54,18 @@ namespace BruTile.GoogleMaps
         Random r = new Random();
         public byte[] GetTile(BruTile.TileInfo tileInfo)
         {
+            if (logger.IsDebugEnabled)
+            {
+                logger.DebugFormat("Fetching tile: {0},{1},{2}", tileInfo.Index.Level, tileInfo.Index.Col, tileInfo.Index.Row);
+            }
+            
             string url = _tileSchema.mapUrlTemplates[r.Next(0, _tileSchema.mapUrlTemplates.Length - 1)];
             url = string.Format(url, tileInfo.Index.Col, tileInfo.Index.Row, tileInfo.Index.Level, calculateSParam(tileInfo.Index.Col, tileInfo.Index.Row));
 
+            if (logger.IsDebugEnabled)
+            {
+                logger.DebugFormat("Using URL: {0}", url);
+            }
             
             byte[] data = Fetch(url);
 
@@ -67,30 +79,34 @@ namespace BruTile.GoogleMaps
                 {
                     using (MemoryStream ms2 = new MemoryStream(overlayData))
                     {
-                        System.Drawing.Image img = new System.Drawing.Bitmap(ms);
-                        System.Drawing.Image overlayimg = new System.Drawing.Bitmap(ms2);
-                        using (System.Drawing.Graphics g = System.Drawing.Graphics.FromImage(img))
+                        using (System.Drawing.Image img = new System.Drawing.Bitmap(ms))
                         {
-                            g.DrawImage(overlayimg, 0, 0);
-                        }
+                            using (System.Drawing.Image overlayimg = new System.Drawing.Bitmap(ms2))
+                            {
+                                using (System.Drawing.Graphics g = System.Drawing.Graphics.FromImage(img))
+                                {
+                                    g.DrawImage(overlayimg, 0, 0);
+                                }
 
-                        using (MemoryStream newMs = new MemoryStream())
-                        {
+                                using (MemoryStream newMs = new MemoryStream())
+                                {
 
-                            ImageCodecInfo jgpEncoder = GetEncoder(ImageFormat.Jpeg);
-                            System.Drawing.Imaging.Encoder myEncoder =
-                                System.Drawing.Imaging.Encoder.Quality;
-                            EncoderParameters myEncoderParameters = new EncoderParameters(1);
-                            EncoderParameter myEncoderParameter = new EncoderParameter(myEncoder,
-                                90L);
-                            myEncoderParameters.Param[0] = myEncoderParameter;
-                            img.Save(newMs, jgpEncoder, myEncoderParameters);
+                                    ImageCodecInfo jgpEncoder = GetEncoder(ImageFormat.Jpeg);
+                                    System.Drawing.Imaging.Encoder myEncoder =
+                                        System.Drawing.Imaging.Encoder.Quality;
+                                    EncoderParameters myEncoderParameters = new EncoderParameters(1);
+                                    EncoderParameter myEncoderParameter = new EncoderParameter(myEncoder,
+                                        90L);
+                                    myEncoderParameters.Param[0] = myEncoderParameter;
+                                    img.Save(newMs, jgpEncoder, myEncoderParameters);
 
 
-                            newMs.Seek(0, SeekOrigin.Begin);
-                            data = new byte[newMs.Length];
-                            newMs.Read(data, 0, data.Length);
-                            newMs.Close();
+                                    newMs.Seek(0, SeekOrigin.Begin);
+                                    data = new byte[newMs.Length];
+                                    newMs.Read(data, 0, data.Length);
+                                    newMs.Close();
+                                }
+                            }
                         }
                         ms2.Close();
                     }
@@ -118,7 +134,6 @@ namespace BruTile.GoogleMaps
         private byte[] Fetch(string url)
         {
             WebRequest wq = HttpWebRequest.Create(url);
-
             (wq as HttpWebRequest).UserAgent = UserAgent;
             (wq as HttpWebRequest).Referer = Referer;
 
@@ -126,34 +141,31 @@ namespace BruTile.GoogleMaps
             (wq as HttpWebRequest).AllowAutoRedirect = true;
             (wq as HttpWebRequest).Timeout = 5000;
 
-            WebResponse resp = wq.GetResponse();
-
-            if (resp.ContentType.StartsWith("image", StringComparison.OrdinalIgnoreCase))
+            byte[] ret = null;
+            using (WebResponse resp = wq.GetResponse())
             {
-                using (Stream responseStream = resp.GetResponseStream())
+                if (resp.ContentType.StartsWith("image", StringComparison.OrdinalIgnoreCase))
                 {
-                    return Utilities.ReadFully(responseStream);
+                    using (Stream responseStream = resp.GetResponseStream())
+                    {
+                        ret = Utilities.ReadFully(responseStream);
+                        responseStream.Close();
+                    }
                 }
+                else
+                {
+                    string message = ComposeErrorMessage(resp, url);
+
+                    if (logger.IsDebugEnabled)
+                    {
+                        logger.DebugFormat("Error fetching tile: {0}", message);
+                    }
+
+                    throw (new BruTile.Web.WebResponseFormatException(message, null));
+                }
+                resp.Close();
             }
-            else
-            {
-                string message = ComposeErrorMessage(resp, url);
-                throw (new BruTile.Web.WebResponseFormatException(message, null));
-            }
-
-            /*Stream s = resp.GetResponseStream();
-
-            int toRead = (int)resp.ContentLength;
-            int numRead = 0;
-            byte[] data = new byte[toRead];
-            do
-            {
-                int nr = s.Read(data, numRead, toRead - numRead);
-                numRead += nr;
-            } while (numRead < toRead);
-
-            resp.Close();
-            return data;*/
+            return ret;
         }
 
         private static string ComposeErrorMessage(WebResponse webResponse, string uri)
