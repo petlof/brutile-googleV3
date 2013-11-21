@@ -29,6 +29,7 @@ using System.Threading;
 using System.Windows.Forms;
 using System.Text.RegularExpressions;
 using System.Net;
+using mshtml;
 using Common.Logging;
 
 namespace BruTile.GoogleMaps
@@ -155,7 +156,37 @@ namespace BruTile.GoogleMaps
             HtmlElement htEl = m_WebBrowser.Document.CreateElement("script");
             htEl.SetAttribute("type", "text/javascript");
             Type t = htEl.DomElement.GetType();
-            t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[] { "function modContent() {while (document.getElementsByTagName(\"META\").length > 0) {document.getElementsByTagName(\"head\")[0].removeChild(document.getElementsByTagName(\"META\")[0]);}  if (document.body) {document.body.innerHTML = \"\";}} " });
+            t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[]
+            {
+                @"function modContent() 
+{
+var head = document.getElementsByTagName(""head"")[0];
+while (head.getElementsByTagName(""META"").length > 0) 
+{
+   head.removeChild(head.getElementsByTagName(""META"")[0]);
+}
+while (head.getElementsByTagName(""link"").length > 0) 
+{
+   head.removeChild(document.getElementsByTagName(""link"")[0]);
+}
+while (head.getElementsByTagName(""script"").length > 0) 
+{
+   head.removeChild(document.getElementsByTagName(""script"")[0]);
+}  
+while (head.getElementsByTagName(""style"").length > 0) 
+{
+   head.removeChild(document.getElementsByTagName(""style"")[0]);
+}  
+if (document.body) 
+{document.body.innerHTML = """"
+;}}
+function getContent()
+{
+    return document.getElementsByTagName(""head"")[0].innerHTML;
+}
+"
+            });
+
             m_WebBrowser.Document.Body.AppendChild(htEl);
             m_WebBrowser.Document.InvokeScript("modContent");
 
@@ -180,18 +211,25 @@ namespace BruTile.GoogleMaps
             t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[] { getWrapperCode() });
             m_WebBrowser.Document.Body.AppendChild(htEl);
 
-            htEl = m_WebBrowser.Document.CreateElement("style");
-            htEl.SetAttribute("type", "text/css");
-            t = htEl.DomElement.GetType();
+           // htEl = m_WebBrowser.Document.CreateElement("style");
+
+            //IHTMLStyleSheet styleSheet = (m_WebBrowser.Document.DomDocument as IHTMLDocument2).createStyleSheet("", 0);
+            //styleSheet.cssText = "BODY { margin: 0px; padding: 0px;} #map { width: 600px; height: 400px; border: 0px;}";
+           // styleSheet.addRule("BODY", "margin: 0px; padding: 0px;");
+           // styleSheet.addRule("#map", "width: 600px; height: 400px; border: 0px;");
+            /*t = htEl.DomElement.GetType();
             var mi = t.GetMethods().Where(x => x.Name.Contains("style")).FirstOrDefault();
             object it = t.InvokeMember("styleSheet", BindingFlags.GetProperty, null, htEl.DomElement, null);
             t = it.GetType();
-            t.InvokeMember("cssText", BindingFlags.SetProperty, null, it, new object[] { "BODY { margin: 0px; padding: 0px;} #map { width: 600px; height: 400px; border: 0px;}" });
-            m_WebBrowser.Document.GetElementsByTagName("head")[0].AppendChild(htEl);
+            t.InvokeMember("cssText", BindingFlags.SetProperty, null, it, new object[] { "BODY { margin: 0px; padding: 0px;} #map { width: 600px; height: 400px; border: 0px;}" });*/
+
+           // m_WebBrowser.Document.GetElementsByTagName("head")[0].AppendChild(htEl);
 
             htEl = m_WebBrowser.Document.CreateElement("div");
             htEl.Id = "map";
             m_WebBrowser.Document.Body.AppendChild(htEl);
+
+            var curc = m_WebBrowser.Document.InvokeScript("getContent");
 
             ThreadPool.QueueUserWorkItem(new WaitCallback(delegate
             {

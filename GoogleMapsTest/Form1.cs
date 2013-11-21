@@ -16,8 +16,8 @@ namespace GoogleMapsTest
     {
         BruTile.GoogleMaps.GoogleV3TileSource ts;
         public Form1()
-        {            
-            ts = new BruTile.GoogleMaps.GoogleV3TileSource(BruTile.GoogleMaps.GoogleV3TileSource.MapTypeId.ROADMAP);
+        {
+            ts = new BruTile.GoogleMaps.GoogleV3TileSource("gme-trionaab", "srnat", "http://sverigesradio.se/", BruTile.GoogleMaps.GoogleV3TileSource.MapTypeId.ROADMAP);
             InitializeComponent();
             SharpMap.Layers.TileAsyncLayer tl = new SharpMap.Layers.TileAsyncLayer(ts, "Google");
             tl.OnlyRedrawWhenComplete = true;
