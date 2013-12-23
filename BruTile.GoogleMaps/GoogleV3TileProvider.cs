@@ -1,4 +1,6 @@
-﻿/**
+﻿using System.Linq;
+using Common.Logging;
+/**
  * Brutile GoogleV3
  *
  * Copyright 2012 Peter Löfås
@@ -18,66 +20,63 @@
  * 
  **/
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Net;
-using System.IO;
 using System.Drawing.Imaging;
 using System.Globalization;
-using Common.Logging;
+using System.IO;
+using System.Net;
 
 namespace BruTile.GoogleMaps
 {
-    public class GoogleV3TileProvider : BruTile.ITileProvider
+    public class GoogleV3TileProvider : ITileProvider
     {
-        private static readonly ILog logger = LogManager.GetLogger(typeof(GoogleV3TileProvider));
+        private static readonly ILog m_logger = LogManager.GetLogger(typeof(GoogleV3TileProvider));
 
         public const string UserAgent = @"Mozilla/5.0 (Windows; U; Windows NT 6.0; en-US; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7";
-        private string Referer;
-        private GoogleV3TileSchema _tileSchema;
+        private readonly string m_referer;
+        private readonly GoogleV3TileSchema m_tileSchema;
 
         public GoogleV3TileProvider(GoogleV3TileSchema tileSchema, string referer = "http://localhost")
         {
-            this.Referer = referer;
-            _tileSchema = tileSchema;
+            m_referer = referer;
+            m_tileSchema = tileSchema;
         }
 
-        string secword = "Galileo";
-        string calculateSParam(int x, int y)
+        private const string Secword = "Galileo";
+
+        static string CalculateSParam(int x, int y)
         {
             int seclen = (3 * x + y) % 8;
-            string sec = secword.Substring(0, seclen);
+            string sec = Secword.Substring(0, seclen);
             return sec;
         }
 
-        Random r = new Random();
-        public byte[] GetTile(BruTile.TileInfo tileInfo)
+        readonly Random m_r = new Random();
+        public byte[] GetTile(TileInfo tileInfo)
         {
-            if (logger.IsDebugEnabled)
+            if (m_logger.IsDebugEnabled)
             {
-                logger.DebugFormat("Fetching tile: {0},{1},{2}", tileInfo.Index.Level, tileInfo.Index.Col, tileInfo.Index.Row);
+                m_logger.DebugFormat("Fetching tile: {0},{1},{2}", tileInfo.Index.Level, tileInfo.Index.Col, tileInfo.Index.Row);
             }
             
-            string url = _tileSchema.mapUrlTemplates[r.Next(0, _tileSchema.mapUrlTemplates.Length - 1)];
-            url = string.Format(url, tileInfo.Index.Col, tileInfo.Index.Row, tileInfo.Index.Level, calculateSParam(tileInfo.Index.Col, tileInfo.Index.Row));
+            string url = m_tileSchema.MapUrlTemplates[m_r.Next(0, m_tileSchema.MapUrlTemplates.Length - 1)];
+            url = string.Format(url, tileInfo.Index.Col, tileInfo.Index.Row, tileInfo.Index.Level, CalculateSParam(tileInfo.Index.Col, tileInfo.Index.Row));
 
-            if (logger.IsDebugEnabled)
+            if (m_logger.IsDebugEnabled)
             {
-                logger.DebugFormat("Using URL: {0}", url);
+                m_logger.DebugFormat("Using URL: {0}", url);
             }
             
             byte[] data = Fetch(url);
 
-            if (_tileSchema._mapType == GoogleV3TileSource.MapTypeId.HYBRID)
+            if (m_tileSchema.MapType == GoogleV3TileSource.MapTypeId.HYBRID)
             {
-                string overlayurl = _tileSchema.overlayUrlTemplates[r.Next(0, _tileSchema.overlayUrlTemplates.Length - 1)];
-                overlayurl = string.Format(overlayurl, tileInfo.Index.Col, tileInfo.Index.Row, tileInfo.Index.Level, calculateSParam(tileInfo.Index.Col, tileInfo.Index.Row));
+                string overlayurl = m_tileSchema.OverlayUrlTemplates[m_r.Next(0, m_tileSchema.OverlayUrlTemplates.Length - 1)];
+                overlayurl = string.Format(overlayurl, tileInfo.Index.Col, tileInfo.Index.Row, tileInfo.Index.Level, CalculateSParam(tileInfo.Index.Col, tileInfo.Index.Row));
                 byte[] overlayData = Fetch(overlayurl);                
 
-                using (MemoryStream ms = new MemoryStream(data))
+                using (var ms = new MemoryStream(data))
                 {
-                    using (MemoryStream ms2 = new MemoryStream(overlayData))
+                    using (var ms2 = new MemoryStream(overlayData))
                     {
                         using (System.Drawing.Image img = new System.Drawing.Bitmap(ms))
                         {
@@ -88,14 +87,14 @@ namespace BruTile.GoogleMaps
                                     g.DrawImage(overlayimg, 0, 0);
                                 }
 
-                                using (MemoryStream newMs = new MemoryStream())
+                                using (var newMs = new MemoryStream())
                                 {
 
                                     ImageCodecInfo jgpEncoder = GetEncoder(ImageFormat.Jpeg);
-                                    System.Drawing.Imaging.Encoder myEncoder =
-                                        System.Drawing.Imaging.Encoder.Quality;
-                                    EncoderParameters myEncoderParameters = new EncoderParameters(1);
-                                    EncoderParameter myEncoderParameter = new EncoderParameter(myEncoder,
+                                    Encoder myEncoder =
+                                        Encoder.Quality;
+                                    var myEncoderParameters = new EncoderParameters(1);
+                                    var myEncoderParameter = new EncoderParameter(myEncoder,
                                         90L);
                                     myEncoderParameters.Param[0] = myEncoderParameter;
                                     img.Save(newMs, jgpEncoder, myEncoderParameters);
@@ -118,30 +117,27 @@ namespace BruTile.GoogleMaps
             return data;
         }
 
-        private ImageCodecInfo GetEncoder(ImageFormat format)
+        private static ImageCodecInfo GetEncoder(ImageFormat format)
         {
             ImageCodecInfo[] codecs = ImageCodecInfo.GetImageDecoders();
-            foreach (ImageCodecInfo codec in codecs)
-            {
-                if (codec.FormatID == format.Guid)
-                {
-                    return codec;
-                }
-            }
-            return null;
+            return codecs.FirstOrDefault(codec => codec.FormatID == format.Guid);
         }
 
         private byte[] Fetch(string url)
         {
-            WebRequest wq = HttpWebRequest.Create(url);
-            (wq as HttpWebRequest).UserAgent = UserAgent;
-            (wq as HttpWebRequest).Referer = Referer;
+            WebRequest wq = WebRequest.Create(url);
+            var httpWebRequest = wq as HttpWebRequest;
+            if (httpWebRequest != null)
+            {
+                httpWebRequest.UserAgent = UserAgent;
 
-            (wq as HttpWebRequest).KeepAlive = false;
-            (wq as HttpWebRequest).AllowAutoRedirect = true;
-            (wq as HttpWebRequest).Timeout = 5000;
+                httpWebRequest.Referer = m_referer;
+                httpWebRequest.KeepAlive = false;
+                httpWebRequest.AllowAutoRedirect = true;
+                httpWebRequest.Timeout = 5000;
+            }
 
-            byte[] ret = null;
+            byte[] ret;
             using (WebResponse resp = wq.GetResponse())
             {
                 if (resp.ContentType.StartsWith("image", StringComparison.OrdinalIgnoreCase))
@@ -149,19 +145,22 @@ namespace BruTile.GoogleMaps
                     using (Stream responseStream = resp.GetResponseStream())
                     {
                         ret = Utilities.ReadFully(responseStream);
-                        responseStream.Close();
+                        if (responseStream != null)
+                        {
+                            responseStream.Close();
+                        }
                     }
                 }
                 else
                 {
                     string message = ComposeErrorMessage(resp, url);
 
-                    if (logger.IsDebugEnabled)
+                    if (m_logger.IsDebugEnabled)
                     {
-                        logger.DebugFormat("Error fetching tile: {0}", message);
+                        m_logger.DebugFormat("Error fetching tile: {0}", message);
                     }
 
-                    throw (new BruTile.Web.WebResponseFormatException(message, null));
+                    throw (new Web.WebResponseFormatException(message, null));
                 }
                 resp.Close();
             }

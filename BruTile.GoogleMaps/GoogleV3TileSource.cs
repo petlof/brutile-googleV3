@@ -20,14 +20,6 @@
 
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using BruTile.PreDefined;
-using System.Windows.Forms;
-using System.Net.Sockets;
-using System.Threading;
-using System.IO;
 
 namespace BruTile.GoogleMaps
 {
@@ -36,20 +28,16 @@ namespace BruTile.GoogleMaps
     /// Implementation of a GoogleMaps V3 TileSource
     /// This hosts the Google Maps Javascript API internally in the application and grabs tiles from that to render in brutile.
     /// </summary>
-    public class GoogleV3TileSource : BruTile.ITileSource, IDisposable
+    public class GoogleV3TileSource : ITileSource, IDisposable
     {
         public enum MapTypeId { ROADMAP, SATELLITE, HYBRID, TERRAIN };
-        private GoogleV3TileSchema _tileSchema;
-        private GoogleV3TileProvider _googleMapsTP;
+        private GoogleV3TileSchema m_tileSchema;
+        private readonly GoogleV3TileProvider m_googleMapsTp;
 
         public GoogleV3TileSource(string googleClientID, string googleChannel, string baseUrl, MapTypeId mapType)
         {
-            _tileSchema = new GoogleMaps.GoogleV3TileSchema(googleClientID, googleChannel, baseUrl, mapType);
-            if (!string.IsNullOrEmpty(baseUrl))
-                _googleMapsTP = new GoogleMaps.GoogleV3TileProvider(_tileSchema);
-            else
-                _googleMapsTP = new GoogleMaps.GoogleV3TileProvider(_tileSchema, baseUrl);
-
+            m_tileSchema = new GoogleV3TileSchema(googleClientID, googleChannel, baseUrl, mapType);
+            m_googleMapsTp = !string.IsNullOrEmpty(baseUrl) ? new GoogleV3TileProvider(m_tileSchema) : new GoogleV3TileProvider(m_tileSchema, baseUrl);
         }
 
         public GoogleV3TileSource(MapTypeId mapType)
@@ -65,20 +53,20 @@ namespace BruTile.GoogleMaps
         }
         public ITileProvider Provider
         {
-            get { return _googleMapsTP; }
+            get { return m_googleMapsTp; }
         }
 
         public ITileSchema Schema
         {
-            get { return _tileSchema; }
+            get { return m_tileSchema; }
         }
 
         public void Dispose()
         {
-            if (_tileSchema != null)
+            if (m_tileSchema != null)
             {
-                _tileSchema.Dispose();
-                _tileSchema = null;
+                m_tileSchema.Dispose();
+                m_tileSchema = null;
             }
         }
     }

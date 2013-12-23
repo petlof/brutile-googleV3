@@ -17,15 +17,10 @@
  * License along with this library.  If not, see <http://www.gnu.org/licenses/>.
  * 
  **/
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Globalization;
 
 namespace BruTile.GoogleMaps
 {
-    public class GoogleV3TileInfo : BruTile.TileInfo
+    public class GoogleV3TileInfo : TileInfo
     {
         public string Url { get; set; }
         public int ZIndex { get; set; }

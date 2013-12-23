@@ -1,4 +1,6 @@
-﻿/**
+﻿
+//#define USE_CefSharp
+/**
  * Brutile GoogleV3
  *
  * Copyright 2012 Peter Löfås
@@ -17,43 +19,46 @@
  * License along with this library.  If not, see <http://www.gnu.org/licenses/>.
  * 
  **/
+using BruTile.PreDefined;
+using Common.Logging;
+using mshtml;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using BruTile.PreDefined;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
-using System.Globalization;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
-using System.Text.RegularExpressions;
-using System.Net;
-using mshtml;
-using Common.Logging;
 
 namespace BruTile.GoogleMaps
 {
     public class GoogleV3TileSchema : ITileSchema, IDisposable
     {
-        System.Windows.Forms.WebBrowser m_WebBrowser;
-        static object locker = new object();
-        private string gmeClientID;
-        private string googleChannel;
-        private string referer;
-        internal GoogleV3TileSource.MapTypeId _mapType;
-        Thread wbThread = null;
-        ApplicationContext appContext = null;
-        internal string[] mapUrlTemplates = null;
-        internal string[] overlayUrlTemplates = null;
+#if USE_CefSharp
+        private CefSharp.WinForms.WebView m_webView;
+#else
+        WebBrowser m_webBrowser;
+        
+#endif
+        static readonly object m_locker = new object();
+        private readonly string m_gmeClientID;
+        private readonly string m_googleChannel;
+        private readonly string m_referer;
+        internal GoogleV3TileSource.MapTypeId MapType;
+        Thread wbThread;
+        ApplicationContext m_appContext;
+        internal string[] MapUrlTemplates = null;
+        internal string[] OverlayUrlTemplates = null;
 
-        static Dictionary<string, string[]> _cachedURLs = new Dictionary<string, string[]>();
+        static readonly Dictionary<string, string[]> m_cachedUrLs = new Dictionary<string, string[]>();
 
-        static readonly ILog logger = LogManager.GetLogger(typeof(GoogleV3TileSchema));
+        static readonly ILog m_logger = LogManager.GetLogger(typeof(GoogleV3TileSchema));
+
 
         public GoogleV3TileSchema(string gmeClientID, string googleChannel, string referer, GoogleV3TileSource.MapTypeId mapType)
         {
-            _mapType = mapType;
+            MapType = mapType;
             Height = 256;
             Width = 256;
             Extent = new Extent(-20037508.342789, -20037508.342789, 20037508.342789, 20037508.342789);
@@ -64,107 +69,196 @@ namespace BruTile.GoogleMaps
             Axis = AxisDirection.InvertedY;
             Srs = "EPSG:3857";
 
-            this.gmeClientID = gmeClientID;
-            this.googleChannel = googleChannel;
-            this.referer = referer;
-            if (_cachedURLs.ContainsKey(mapType.ToString() + "_base"))
+            m_gmeClientID = gmeClientID;
+            m_googleChannel = googleChannel;
+            m_referer = referer;
+            if (m_cachedUrLs.ContainsKey(mapType + "_base"))
             {
-                mapUrlTemplates = _cachedURLs[mapType.ToString() + "_base"];
+                MapUrlTemplates = m_cachedUrLs[mapType + "_base"];
             }
-            if (_cachedURLs.ContainsKey(mapType.ToString() + "_overlay"))
+            if (m_cachedUrLs.ContainsKey(mapType + "_overlay"))
             {
-                overlayUrlTemplates = _cachedURLs[mapType.ToString() + "_overlay"];
+                OverlayUrlTemplates = m_cachedUrLs[mapType + "_overlay"];
             }
-            appContext = new ApplicationContext();
-            
+            m_appContext = new ApplicationContext();
+
+
+           /* var frm = new Form();
+            frm.Show();
+            frm.Size = new System.Drawing.Size(600, 400);
+            Label l = new Label();
+            l.Text = "Test";
+
+            WebBrowser bw = new WebBrowser();
+            bw.Size = new System.Drawing.Size(600, 400);
+            frm.Size = new System.Drawing.Size(600, 400);
+
+            frm.Controls.Add(l);
+            frm.Controls.Add(bw);
+            */
+
             wbThread = new Thread(() =>
             {
-                try
+               try
                 {
-                    m_WebBrowser = new System.Windows.Forms.WebBrowser();
-                    m_WebBrowser.Navigating += new WebBrowserNavigatingEventHandler(m_WebBrowser_Navigating);
-                    m_WebBrowser.Visible = false;
-                    m_WebBrowser.ScrollBarsEnabled = false;
-                    m_WebBrowser.Size = new System.Drawing.Size(600, 400);
-                    m_WebBrowser.ScriptErrorsSuppressed = true;
-                    m_WebBrowser.DocumentCompleted += new System.Windows.Forms.WebBrowserDocumentCompletedEventHandler(m_WebBrowser_DocumentCompleted);
+#if USE_CefSharp
+                    var settings = new CefSharp.Settings
+                    {
+                        PackLoadingDisabled = true,
+                    };
+
+                    if (CEF.Initialize(settings))
+                    {
+                        m_webView = new WebView();
+                        m_webView.PropertyChanged += WebViewOnPropertyChanged;
+                        m_webView.Address = referer;
+
+                    }
+#else
+
+                    m_webBrowser = new WebBrowser();
+                    m_webBrowser.Navigating += m_WebBrowser_Navigating;
+                    m_webBrowser.Visible = true;
+                    m_webBrowser.ScrollBarsEnabled = false;
+                    m_webBrowser.Size = new System.Drawing.Size(600, 400);
+                    m_webBrowser.ScriptErrorsSuppressed = true;
+                    m_webBrowser.DocumentCompleted += m_WebBrowser_DocumentCompleted;
+
+
+                    //bw.Invoke(new MethodInvoker(delegate
+                    //{
+                    //    bw.Navigating += new WebBrowserNavigatingEventHandler(m_WebBrowser_Navigating);
+                    //    bw.DocumentCompleted += new System.Windows.Forms.WebBrowserDocumentCompletedEventHandler(m_WebBrowser_DocumentCompleted);
+                    //    bw.DocumentText =
+                    //        "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"><html xmlns=\"http://www.w3.org/1999/xhtml\"><head><style>BODY { background-color: red;}</style></head><body></body></html>";
+                    //}));
+
+                    //m_webBrowser = bw;
 
                     if (!string.IsNullOrEmpty(referer))
                     {
-                        m_WebBrowser.Navigate(referer);
+                        m_webBrowser.Navigate(referer);
                     }
                     else
                     {
-                        m_WebBrowser.DocumentText = "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"><html xmlns=\"http://www.w3.org/1999/xhtml\"><body></body></html>";
-                    }
+                        m_webBrowser.DocumentText = "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"><html xmlns=\"http://www.w3.org/1999/xhtml\"><body></body></html>";
 
-                    if (appContext != null)
+                    }
+#endif
+
+                    if (m_appContext != null)
                     {
-                        Application.Run(appContext);
+                        Application.Run(m_appContext);
                     }
                 }
                 catch (Exception ee)
                 {
-                    logger.Error("Exception in WebBrowserThread, quitting", ee);
+                    m_logger.Error("Exception in WebBrowserThread, quitting", ee);
                 }
             });
             wbThread.Name = "WebBrowser Thread";
             wbThread.SetApartmentState(ApartmentState.STA);
             wbThread.Start();
-            if (logger.IsDebugEnabled)
-                logger.Debug("WebBrowserThread Started");
+            if (m_logger.IsDebugEnabled)
+                m_logger.Debug("WebBrowserThread Started");
         }
+#if USE_CefSharp
+        private bool m_webViewReady = false;
+        private void WebViewOnPropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName.Equals("IsBrowserInitialized", StringComparison.OrdinalIgnoreCase))
+            {
+                m_webViewReady = m_webView.IsBrowserInitialized;
+                if (m_webViewReady)
+                {
+                    m_webView.Address = referer;
+                    /* string resourceName = "Yaircc.UI.default.htm";
+                    using (Stream stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName))
+                    {
+                        using (StreamReader reader = new StreamReader(stream))
+                        {
+                            this.WebView.LoadHtml(reader.ReadToEnd());
+                        }
+                    }*/
+                }
+            }
 
-        
+            // Once the HTML has finished loading, begin loading the initial content.
+            if (e.PropertyName.Equals("IsLoading", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!m_webView.IsLoading)
+                {
+                    /*this.SetSplashText();
+                    if (this.type == IRCTabType.Console)
+                    {
+                        this.SetupConsoleContent();
+                    }
+
+                    GlobalSettings settings = GlobalSettings.Instance;
+                    this.LoadTheme(settings.ThemeFileName);
+                    
+                    if (this.webViewInitialised != null)
+                    {
+                        this.webViewInitialised.Invoke();
+                    }*/
+                }
+            }
+        }
+#endif
+
+        bool m_mapsAdded;
+#if USE_CefSharp
+#else
 
         void m_WebBrowser_Navigating(object sender, WebBrowserNavigatingEventArgs e)
         {
-            if (!string.IsNullOrEmpty(referer) && e.Url.Host == new Uri(referer).Host)
+            if (!string.IsNullOrEmpty(m_referer) && e.Url.Host == new Uri(m_referer).Host)
             {
-                MemoryStream ms = new MemoryStream();
+                var ms = new MemoryStream();
                 var sw = new StreamWriter(ms);
                 sw.WriteLine("HTTP/1.1 200 OK");
                 sw.WriteLine("Server: Brutile");
                 sw.WriteLine("Content-Type: text/html");
                 sw.WriteLine("Connection: close");
-                string resp = "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"><html xmlns=\"http://www.w3.org/1999/xhtml\"><body></body></html>";
+                const string resp = "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"><html xmlns=\"http://www.w3.org/1999/xhtml\"><head></head><body></body></html>";
                 sw.WriteLine("Content-Length: " + resp.Length);
                 sw.WriteLine();
                 sw.Write(resp);
                 sw.Flush();
                 ms.Seek(0,SeekOrigin.Begin);
-                m_WebBrowser.DocumentStream = ms;
+
+                m_webBrowser.DocumentStream = ms;
             }
         }
 
-        bool mapsAdded = false;
 
-        void addMaps()
+        private void AddMaps(WebBrowser browser)
         {
             string googleURL = "http://maps.googleapis.com/maps/api/js?libraries=&sensor=false&callback=init";
-            if (!string.IsNullOrEmpty(gmeClientID))
-                googleURL += "&client=" + gmeClientID;
-            if (!string.IsNullOrEmpty(googleChannel))
-                googleURL += "&channel=" + googleChannel;
-
-            string page = "<html><head><style type=\"text/css\">BODY { margin: 0px; padding: 0px;}</style></head><body><div id=\"map\" style=\"width:600px; height: 400px; border: 0px\"></div><script type=\"text/javascript\" src=\"" + googleURL + "\"></script>";
-            page += "<script type=\"text/javascript\">" + getOpenLayersCode() + "</script>";
-            page += "<script type=\"text/javascript\">" + getWrapperCode() + "</script>";
-            page += "</body></html>";
+            if (!string.IsNullOrEmpty(m_gmeClientID))
+                googleURL += "&client=" + m_gmeClientID;
+            if (!string.IsNullOrEmpty(m_googleChannel))
+                googleURL += "&channel=" + m_googleChannel;
 
             //Clear body
-            HtmlElement htEl = m_WebBrowser.Document.CreateElement("script");
-            htEl.SetAttribute("type", "text/javascript");
-            Type t = htEl.DomElement.GetType();
-            t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[]
+            if (browser.Document != null)
             {
-                @"function modContent() 
+                if (browser.Document.Body != null)
+                {
+                    HtmlElement htEl = browser.Document.CreateElement("script");
+                    if (htEl != null)
+                    {
+                        htEl.SetAttribute("type", "text/javascript");
+                        Type t = htEl.DomElement.GetType();
+                        t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[]
+                        {
+                            @"function modContent() 
 {
 var head = document.getElementsByTagName(""head"")[0];
-while (head.getElementsByTagName(""META"").length > 0) 
+/*while (head.getElementsByTagName(""META"").length > 0) 
 {
    head.removeChild(head.getElementsByTagName(""META"")[0]);
-}
+}*/
 while (head.getElementsByTagName(""link"").length > 0) 
 {
    head.removeChild(document.getElementsByTagName(""link"")[0]);
@@ -185,134 +279,178 @@ function getContent()
     return document.getElementsByTagName(""head"")[0].innerHTML;
 }
 "
-            });
-
-            m_WebBrowser.Document.Body.AppendChild(htEl);
-            m_WebBrowser.Document.InvokeScript("modContent");
+                        });
 
 
-            htEl = m_WebBrowser.Document.CreateElement("script");
-            htEl.SetAttribute("type", "text/javascript");
-            t = htEl.DomElement.GetType();
-            t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[] { "function addGoogle() { var sc = document.createElement(\"SCRIPT\"); sc.type=\"text/javascript\"; sc.src=\"" + googleURL + "\";document.body.appendChild(sc);}" });
-            m_WebBrowser.Document.Body.AppendChild(htEl);
-
-            m_WebBrowser.Document.InvokeScript("addGoogle");
-
-            htEl = m_WebBrowser.Document.CreateElement("script");
-            htEl.SetAttribute("type", "text/javascript");
-            t = htEl.DomElement.GetType();
-            t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[] { "baseLayer = \"google.maps.MapTypeId." + _mapType.ToString() + "\";" + getOpenLayersCode() });
-            m_WebBrowser.Document.Body.AppendChild(htEl);
-
-            htEl = m_WebBrowser.Document.CreateElement("script");
-            htEl.SetAttribute("type", "text/javascript");
-            t = htEl.DomElement.GetType();
-            t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[] { getWrapperCode() });
-            m_WebBrowser.Document.Body.AppendChild(htEl);
-
-           // htEl = m_WebBrowser.Document.CreateElement("style");
-
-            //IHTMLStyleSheet styleSheet = (m_WebBrowser.Document.DomDocument as IHTMLDocument2).createStyleSheet("", 0);
-            //styleSheet.cssText = "BODY { margin: 0px; padding: 0px;} #map { width: 600px; height: 400px; border: 0px;}";
-           // styleSheet.addRule("BODY", "margin: 0px; padding: 0px;");
-           // styleSheet.addRule("#map", "width: 600px; height: 400px; border: 0px;");
-            /*t = htEl.DomElement.GetType();
-            var mi = t.GetMethods().Where(x => x.Name.Contains("style")).FirstOrDefault();
-            object it = t.InvokeMember("styleSheet", BindingFlags.GetProperty, null, htEl.DomElement, null);
-            t = it.GetType();
-            t.InvokeMember("cssText", BindingFlags.SetProperty, null, it, new object[] { "BODY { margin: 0px; padding: 0px;} #map { width: 600px; height: 400px; border: 0px;}" });*/
-
-           // m_WebBrowser.Document.GetElementsByTagName("head")[0].AppendChild(htEl);
-
-            htEl = m_WebBrowser.Document.CreateElement("div");
-            htEl.Id = "map";
-            m_WebBrowser.Document.Body.AppendChild(htEl);
-
-            var curc = m_WebBrowser.Document.InvokeScript("getContent");
-
-            ThreadPool.QueueUserWorkItem(new WaitCallback(delegate
-            {
-                object res = null;
-                if (logger.IsDebugEnabled)
-                    logger.Debug("Starting detection of initcomplete");
-                do
-                {
-                    try
-                    {
-                        m_WebBrowser.Invoke(new MethodInvoker(delegate
-                            {
-                                res = m_WebBrowser.Document.InvokeScript("isLoaded");
-                            }));
-                        if (!(res is bool && (bool)res == true))
-                            Thread.Sleep(100);
-                    }
-                    catch
-                    {
-                        Thread.Sleep(100);
-                    }
-                }
-                while (appContext != null && !(res is bool && (bool)res == true));
-
-                if (appContext != null)
-                {
-                    haveInited = true;
-                    updateURLTemplates();
-
-                    if (logger.IsDebugEnabled)
-                        logger.Debug("init is complete");
-                }
-                else
-                {
-                    if (logger.IsDebugEnabled)
-                        logger.Debug("AppContext Destroyed before init");
-                }
-
-            }));
-        }
-
-        private void updateURLTemplates()
-        {
-            if (mapUrlTemplates == null || mapUrlTemplates.Length == 0)
-            {
-                for (int i = 0; i < 50; i++)
-                {
-                    if (appContext == null)
-                    {
-                        return;
-                    }
-
-                    if (!zoomDone())
-                    {
-                        Thread.Sleep(100);
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-
-                for (int i = 0; i < 50; i++)
-                {
-                    if (appContext == null)
-                        return;
-                    var jstiles = getCurrentTileURLs();
-                    getTemplateUrls(jstiles, out mapUrlTemplates, out overlayUrlTemplates);
-                    if (mapUrlTemplates == null || mapUrlTemplates.Length == 0)
-                    {
-                        Thread.Sleep(100);
-                    }
-                    else
-                    {
-                        lock (_cachedURLs)
+                        if (browser.Document.Body != null)
                         {
-                            if (!_cachedURLs.ContainsKey(_mapType.ToString() + "_base"))
+                            browser.Document.Body.AppendChild(htEl);
+                        }
+                        browser.Document.InvokeScript("modContent");
+                    }
+
+
+                    htEl = browser.Document.CreateElement("script");
+                    if (htEl != null)
+                    {
+                        htEl.SetAttribute("type", "text/javascript");
+                        Type t = htEl.DomElement.GetType();
+                        t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[]
+                        {
+                            "function addGoogle() { var sc = document.createElement(\"SCRIPT\"); sc.type=\"text/javascript\"; sc.src=\"" + googleURL +
+                            "\";document.body.appendChild(sc);}"
+                        });
+                        if (browser.Document.Body != null)
+                        {
+                            browser.Document.Body.AppendChild(htEl);
+                        }
+                    }
+
+
+
+                    htEl = browser.Document.CreateElement("script");
+                    if (htEl != null)
+                    {
+                        htEl.SetAttribute("type", "text/javascript");
+                        Type t = htEl.DomElement.GetType();
+                        t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[]
+                        {
+                            "baseLayer = \"google.maps.MapTypeId." + MapType + "\";" + getOpenLayersCode()
+                        });
+                        if (browser.Document.Body != null)
+                        {
+                            browser.Document.Body.AppendChild(htEl);
+                        }
+                    }
+
+
+
+                    htEl = browser.Document.CreateElement("script");
+                    if (htEl != null)
+                    {
+                        htEl.SetAttribute("type", "text/javascript");
+                        Type t = htEl.DomElement.GetType();
+                        t.InvokeMember("text", BindingFlags.SetProperty, null, htEl.DomElement, new object[]
+                        {
+                            getWrapperCode()
+                        });
+
+                        if (browser.Document.Body != null)
+                        {
+                            browser.Document.Body.AppendChild(htEl);
+                        }
+                    }
+
+
+                    htEl = browser.Document.CreateElement("style");
+                    if (htEl != null)
+                    {
+                        var htmlDocument2 = browser.Document.DomDocument as IHTMLDocument2;
+                        if (htmlDocument2 != null)
+                        {
+                            IHTMLStyleSheet styleSheet = htmlDocument2.createStyleSheet("", 0);
+                            styleSheet.cssText = "BODY { margin: 0px; padding: 0px;} #map { width: 600px; height: 400px; border: 0px;}";
+                        }
+                        browser.Document.GetElementsByTagName("head")[0].AppendChild(htEl);
+                    }
+
+                    htEl = browser.Document.CreateElement("div");
+                    if (htEl != null)
+                    {
+                        htEl.Id = "map";
+                        if (browser.Document.Body != null)
+                        {
+                            browser.Document.Body.AppendChild(htEl);
+                        }
+                    }
+                }
+
+
+                browser.Document.InvokeScript("addGoogle");
+
+
+                ThreadPool.QueueUserWorkItem(delegate
+                {
+                    object res = null;
+                    if (m_logger.IsDebugEnabled)
+                        m_logger.Debug("Starting detection of initcomplete");
+                    do
+                    {
+                        try
+                        {
+                            browser.Invoke(new MethodInvoker(delegate
                             {
-                                _cachedURLs.Add(_mapType.ToString() + "_base", mapUrlTemplates);
+                                res = browser.Document.InvokeScript("isLoaded");
+                            }));
+                            if (!(res is bool && (bool) res))
+                                Thread.Sleep(100);
+                        }
+                        catch
+                        {
+                            Thread.Sleep(100);
+                        }
+                    } while (m_appContext != null && !(res is bool && (bool) res));
+
+                    if (m_appContext != null)
+                    {
+                        m_haveInited = true;
+                        UpdateURLTemplates();
+
+                        if (m_logger.IsDebugEnabled)
+                            m_logger.Debug("init is complete");
+                    }
+                    else
+                    {
+                        if (m_logger.IsDebugEnabled)
+                            m_logger.Debug("AppContext Destroyed before init");
+                    }
+
+                });
+            }
+        }
+#endif
+        private void UpdateURLTemplates()
+        {
+            if (MapUrlTemplates == null || MapUrlTemplates.Length == 0)
+            {
+                for (int i = 0; i < 50; i++)
+                {
+                    if (m_appContext == null)
+                    {
+                        return;
+                    }
+
+                    if (!ZoomDone())
+                    {
+                        Thread.Sleep(100);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                for (int i = 0; i < 50; i++)
+                {
+                    if (m_appContext == null)
+                        return;
+                    var jstiles = GetCurrentTileUrLs();
+                    GetTemplateUrls(jstiles, out MapUrlTemplates, out OverlayUrlTemplates);
+                    if (MapUrlTemplates == null || MapUrlTemplates.Length == 0)
+                    {
+                        Thread.Sleep(100);
+                    }
+                    else
+                    {
+                        lock (m_cachedUrLs)
+                        {
+                            if (!m_cachedUrLs.ContainsKey(MapType.ToString() + "_base"))
+                            {
+                                m_cachedUrLs.Add(MapType.ToString() + "_base", MapUrlTemplates);
                             }
-                            if (overlayUrlTemplates != null && overlayUrlTemplates.Length > 0 && !_cachedURLs.ContainsKey(_mapType.ToString() + "_overlay"))
+                            if (OverlayUrlTemplates != null && OverlayUrlTemplates.Length > 0 && !m_cachedUrLs.ContainsKey(MapType.ToString() + "_overlay"))
                             {
-                                _cachedURLs.Add(_mapType.ToString() + "_overlay", overlayUrlTemplates);
+                                m_cachedUrLs.Add(MapType.ToString() + "_overlay", OverlayUrlTemplates);
                             }
                         }
                         break;
@@ -322,35 +460,38 @@ function getContent()
         }
 
 
-        bool haveInited = false;
-        void m_WebBrowser_DocumentCompleted(object sender, System.Windows.Forms.WebBrowserDocumentCompletedEventArgs e)
+        bool m_haveInited;
+#if USE_CefSharp
+#else
+        void m_WebBrowser_DocumentCompleted(object sender, WebBrowserDocumentCompletedEventArgs e)
         {
-            m_WebBrowser.DocumentCompleted -= new System.Windows.Forms.WebBrowserDocumentCompletedEventHandler(m_WebBrowser_DocumentCompleted);
-            if (!mapsAdded)
+            m_webBrowser.DocumentCompleted -= m_WebBrowser_DocumentCompleted;
+            if (!m_mapsAdded)
             {                
-                addMaps();
-                mapsAdded = true;
+                AddMaps(sender as WebBrowser);
+                m_mapsAdded = true;
             }
         }
+#endif
 
 
 
         public Extent GetExtentOfTilesInView(Extent extent, int level)
         {
-            setExtent(extent.MinX, extent.MinY, extent.MaxX, extent.MaxY, level);
+            SetExtent(extent.MinX, extent.MinY, extent.MaxX, extent.MaxY, level);
             return m_baseSchema.GetExtentOfTilesInView(extent, level);
         }
 
         public void SetSize(int w, int h)
         {
 
-            if (logger.IsDebugEnabled)
-                logger.Debug("Setting size to: " + w + " , " + h);
+            if (m_logger.IsDebugEnabled)
+                m_logger.Debug("Setting size to: " + w + " , " + h);
 
             setSize(w, h);
         }
 
-        public IEnumerable<BruTile.TileInfo> GetTilesInView(Extent extent, double resolution)
+        public IEnumerable<TileInfo> GetTilesInView(Extent extent, double resolution)
         {
             
 
@@ -358,28 +499,28 @@ function getContent()
             return GetTilesInView(extent, level);
         }
 
-        Regex rex = new Regex(@"x=(?<x>\d+).*?&y=(?<y>\d+).*?&z=(?<z>\d+)", RegexOptions.IgnoreCase);
-        BruTile.PreDefined.SphericalMercatorInvertedWorldSchema m_baseSchema = new SphericalMercatorInvertedWorldSchema();
-        public IEnumerable<BruTile.TileInfo> GetTilesInView(Extent extent, int level)
+        readonly Regex m_rex = new Regex(@"x=(?<x>\d+).*?&y=(?<y>\d+).*?&z=(?<z>\d+)", RegexOptions.IgnoreCase);
+        readonly SphericalMercatorInvertedWorldSchema m_baseSchema = new SphericalMercatorInvertedWorldSchema();
+        public IEnumerable<TileInfo> GetTilesInView(Extent extent, int level)
         {
-            setExtent(extent.MinX, extent.MinY, extent.MaxX, extent.MaxY, level);
+            SetExtent(extent.MinX, extent.MinY, extent.MaxX, extent.MaxY, level);
 
-            if (mapUrlTemplates == null || mapUrlTemplates.Length == 0)
-                updateURLTemplates();
+            if (MapUrlTemplates == null || MapUrlTemplates.Length == 0)
+                UpdateURLTemplates();
 
             return m_baseSchema.GetTilesInView(extent, level);
         }
 
-        Regex sMatch = new Regex("&s=.*?&");
-        Regex tokenMatch = new Regex("&token=\\d*?&");
-        Regex scaleMath = new Regex("&scale=\\d");
-        private void getTemplateUrls(jsTileInfo[] tiles, out string[] mapUrlTemplates, out string[] overlayUrlTemplates)
+        readonly Regex m_sMatch = new Regex("&s=.*?&");
+        readonly Regex m_tokenMatch = new Regex("&token=\\d*?&");
+        readonly Regex m_scaleMath = new Regex("&scale=\\d");
+        private void GetTemplateUrls(IEnumerable<JsTileInfo> tiles, out string[] mapUrlTemplates, out string[] overlayUrlTemplates)
         {
-            List<string> baseUrls = new List<string>();
-            List<string> overlayUrls = new List<string>();
+            var baseUrls = new List<string>();
+            var overlayUrls = new List<string>();
             foreach (var ti in tiles)
             {
-                Match m = rex.Match(ti.Url);
+                Match m = m_rex.Match(ti.Url);
                 if (m.Success)
                 {
                     string url = ti.Url;
@@ -387,13 +528,13 @@ function getContent()
                     url = url.Replace("y=" + m.Groups["y"].Value, "y={1}");
                     url = url.Replace("z=" + m.Groups["z"].Value, "z={2}");
                     if (url.Contains("&s="))
-                        url = sMatch.Replace(url, "&s={3}&");
+                        url = m_sMatch.Replace(url, "&s={3}&");
                     if (url.Contains("&token="))
-                        url = tokenMatch.Replace(url, "&token={4}&");
+                        url = m_tokenMatch.Replace(url, "&token={4}&");
                     if (url.Contains("&scale="))
-                        url = scaleMath.Replace(url, "");
+                        url = m_scaleMath.Replace(url, "");
 
-                    if (_mapType == GoogleV3TileSource.MapTypeId.HYBRID && url.StartsWith("http://mt"))
+                    if (MapType == GoogleV3TileSource.MapTypeId.HYBRID && url.StartsWith("http://mt", StringComparison.OrdinalIgnoreCase))
                     {
                         overlayUrls.Add(url);
                     }
@@ -408,157 +549,147 @@ function getContent()
             overlayUrlTemplates = overlayUrls.ToArray();
         }
 
-        private Extent parseTiles(Extent extent, int level, List<BruTile.TileInfo> tis, jsTileInfo[] tiles)
-        {
-            foreach (var ti in tiles)
-            {
-                Match m = rex.Match(ti.Url);
-                if (m.Success)
-                {
-                    int x = Convert.ToInt32(m.Groups["x"].Value);
-                    int y = Convert.ToInt32(m.Groups["y"].Value);
-                    int z = Convert.ToInt32(m.Groups["z"].Value);
-
-                    Extent e = new BruTile.Extent(
-                        extent.MinX + ti.Left * Resolutions[level].UnitsPerPixel,
-                        extent.MaxY - (ti.Top + 256) * Resolutions[level].UnitsPerPixel,
-                        extent.MinX + (ti.Left + Width) * Resolutions[level].UnitsPerPixel,
-                        extent.MaxY - (ti.Top) * Resolutions[level].UnitsPerPixel
-                        );
-
-                    if (e.Intersects(extent))
-                    {
-
-                        tis.Add(new BruTile.GoogleMaps.GoogleV3TileInfo()
-                        {
-                            Url = ti.Url,
-                            Index = new TileIndex(x, y, ti.Url.GetHashCode()),
-                            Extent = e,
-                            ZIndex = ti.zIndex
-                        });
-                    }
-                }
-                else
-                {
-                    System.Diagnostics.Debug.WriteLine("Could not match " + ti.Url);
-                }
-            }
-            System.Diagnostics.Debug.WriteLine("got " + tis.Count + " tiles");
-            return extent;
-        }
-
 
         /// <summary>
         /// Retreived resolutions from the GoogleMaps JS
         /// </summary>
         /// <returns></returns>
-        Resolution[] getResolutions()
+        Resolution[] GetResolutions()
         {
             string result = null;
-            lock (locker)
+            lock (m_locker)
             {
-                try
+#if USE_CefSharp
+#else
+                if (m_webBrowser != null)
                 {
-                    m_WebBrowser.Invoke(new MethodInvoker(delegate
-                    {
-                        result = m_WebBrowser.Document.InvokeScript("getResolutions") as string;
-                    }));
-                }
-                catch (Exception ee)
-                {
-                    logger.Warn(ee.Message, ee);
                     try
                     {
-                        m_WebBrowser.Invoke(new MethodInvoker(delegate
+                        m_webBrowser.Invoke(new MethodInvoker(delegate
                         {
-                            result = m_WebBrowser.Document.InvokeScript("getResolutions") as string;
+                            if (m_webBrowser.Document != null)
+                            {
+                                result = m_webBrowser.Document.InvokeScript("getResolutions") as string;
+                            }
                         }));
                     }
-                    catch (Exception ee2)
+                    catch (Exception ee)
                     {
-                        logger.Warn("Again: " + ee2.Message, ee2);
+                        m_logger.Warn(ee.Message, ee);
+                        try
+                        {
+                            m_webBrowser.Invoke(new MethodInvoker(delegate
+                            {
+                                if (m_webBrowser.Document != null)
+                                {
+                                    result = m_webBrowser.Document.InvokeScript("getResolutions") as string;
+                                }
+                            }));
+                        }
+                        catch (Exception ee2)
+                        {
+                            m_logger.Warn("Again: " + ee2.Message, ee2);
+                        }
                     }
                 }
+#endif
             }
-            string[] parts = result.Split(',');
-            int numResolutions = parts.Length;
-            if (_mapType == GoogleV3TileSource.MapTypeId.TERRAIN)
-                numResolutions = 15;
-            else
-                numResolutions = 19;
-            Resolution[] ret = new Resolution[numResolutions];
-            for (int i = 0; i < ret.Length; i++)
+            if (result != null)
             {
-                var res = Convert.ToDouble(parts[i], CultureInfo.InvariantCulture);
-                ret[i] = new Resolution() { UnitsPerPixel = res, Id = i.ToString() };
+                string[] parts = result.Split(',');
+                int numResolutions;
+                numResolutions = MapType == GoogleV3TileSource.MapTypeId.TERRAIN ? 15 : 19;
+                var ret = new Resolution[numResolutions];
+                for (int i = 0; i < ret.Length; i++)
+                {
+                    var res = Convert.ToDouble(parts[i], CultureInfo.InvariantCulture);
+                    ret[i] = new Resolution { UnitsPerPixel = res, Id = i.ToString(CultureInfo.InvariantCulture) };
+                }
+                return ret;
             }
-            return ret;
+            return null;
         }
 
-        class jsTileInfo
+        class JsTileInfo
         {
             public string Url { get; set; }
             public int Left { get; set; }
             public int Top { get; set; }
             public int Index { get; set; }
-            public int zIndex { get; set; }
+            public int ZIndex { get; set; }
         }
 
-        private jsTileInfo[] getCurrentTileURLs()
+        private IEnumerable<JsTileInfo> GetCurrentTileUrLs()
         {
             object ret = null;
-            lock (locker)
+            lock (m_locker)
             {
-                try
+#if USE_CefSharp
+#else
+                if (m_webBrowser != null)
                 {
-                    m_WebBrowser.Invoke(new MethodInvoker(delegate
-                    {
-                        ret = m_WebBrowser.Document.InvokeScript("getTileURLs");
-                    }));
-                }
-                catch (Exception ee)
-                {
-                    logger.Warn(ee.Message, ee);
                     try
                     {
-                        m_WebBrowser.Invoke(new MethodInvoker(delegate
+                        m_webBrowser.Invoke(new MethodInvoker(delegate
                         {
-                            ret = m_WebBrowser.Document.InvokeScript("getTileURLs");
+                            if (m_webBrowser.Document != null)
+                            {
+                                ret = m_webBrowser.Document.InvokeScript("getTileURLs");
+                            }
                         }));
                     }
-                    catch (Exception ee2)
+                    catch (Exception ee)
                     {
-                        logger.Warn("Exception again: " + ee2.Message, ee2);
+                        m_logger.Warn(ee.Message, ee);
+                        try
+                        {
+                            m_webBrowser.Invoke(new MethodInvoker(delegate
+                            {
+                                if (m_webBrowser.Document != null)
+                                {
+                                    ret = m_webBrowser.Document.InvokeScript("getTileURLs");
+                                }
+                            }));
+                        }
+                        catch (Exception ee2)
+                        {
+                            m_logger.Warn("Exception again: " + ee2.Message, ee2);
+                        }
                     }
                 }
+#endif
                     
             }
-            Type t = ret.GetType();
-            int len = Convert.ToInt32(t.InvokeMember("length", BindingFlags.GetProperty, null, ret, null));
-            jsTileInfo[] ti = new jsTileInfo[len];
-            for (int i = 0; i < len; i++)
+            if (ret != null)
             {
-                object item = t.InvokeMember("item_" + i, BindingFlags.GetProperty, null, ret, null);
-                string url = t.InvokeMember("url", BindingFlags.GetProperty, null, item, null) as string;
-                int left = (int)t.InvokeMember("left", BindingFlags.GetProperty, null, item, null);
-                int top = (int)t.InvokeMember("top", BindingFlags.GetProperty, null, item, null);
-                int index = (int)t.InvokeMember("index", BindingFlags.GetProperty, null, item, null);
-                int zIndex = (int)t.InvokeMember("zIndex", BindingFlags.GetProperty, null, item, null);
-                ti[i] = new jsTileInfo()
+                Type t = ret.GetType();
+                int len = Convert.ToInt32(t.InvokeMember("length", BindingFlags.GetProperty, null, ret, null));
+                var ti = new JsTileInfo[len];
+                for (int i = 0; i < len; i++)
                 {
-                    Url = url,
-                    Left = left,
-                    Top = top,
-                    Index = index,
-                    zIndex = zIndex
-                };
-            }
+                    object item = t.InvokeMember("item_" + i, BindingFlags.GetProperty, null, ret, null);
+                    var url = t.InvokeMember("url", BindingFlags.GetProperty, null, item, null) as string;
+                    var left = (int)t.InvokeMember("left", BindingFlags.GetProperty, null, item, null);
+                    var top = (int)t.InvokeMember("top", BindingFlags.GetProperty, null, item, null);
+                    var index = (int)t.InvokeMember("index", BindingFlags.GetProperty, null, item, null);
+                    var zIndex = (int)t.InvokeMember("zIndex", BindingFlags.GetProperty, null, item, null);
+                    ti[i] = new JsTileInfo
+                    {
+                        Url = url,
+                        Left = left,
+                        Top = top,
+                        Index = index,
+                        ZIndex = zIndex
+                    };
+                }
 
-            return ti;
+                return ti;
+            }
+            return null;
         }
 
-        int curWidth = 0;
-        int curHeight = 0;
+        int m_curWidth;
+        int m_curHeight;
         /// <summary>
         /// Sets mapsize..
         /// </summary>
@@ -566,41 +697,50 @@ function getContent()
         /// <param name="height"></param>
         void setSize(int width, int height)
         {
-            if (curWidth != width || curHeight != height)
+            if (m_curWidth != width || m_curHeight != height)
             {
-                if (logger.IsDebugEnabled)
-                    logger.DebugFormat("Into setSize {0} {1}", width, height);
+                if (m_logger.IsDebugEnabled)
+                    m_logger.DebugFormat("Into setSize {0} {1}", width, height);
 
-                string size;
-                lock (locker)
+                lock (m_locker)
                 {
+#if USE_CefSharp
+#else
+
                     try
                     {
-                        m_WebBrowser.Invoke(new MethodInvoker(delegate
+                        m_webBrowser.Invoke(new MethodInvoker(delegate
+                        {
+                            m_webBrowser.Size = new System.Drawing.Size(width, height);
+                            if (m_webBrowser.Document != null)
                             {
-                                m_WebBrowser.Size = new System.Drawing.Size(width, height);
-                                size = m_WebBrowser.Document.InvokeScript("updateSize", new object[] { width, height }) as string;
-                            }));
+                                m_webBrowser.Document.InvokeScript("updateSize", new object[] { width, height });
+                            }
+                        }));
                     }
                     catch (Exception ee)
                     {
-                        logger.Warn(ee.Message, ee);
+                        m_logger.Warn(ee.Message, ee);
                         try
                         {
-                            m_WebBrowser.Invoke(new MethodInvoker(delegate
+                            m_webBrowser.Invoke(new MethodInvoker(delegate
                             {
-                                m_WebBrowser.Size = new System.Drawing.Size(width, height);
-                                size = m_WebBrowser.Document.InvokeScript("updateSize", new object[] { width, height }) as string;
+                                m_webBrowser.Size = new System.Drawing.Size(width, height);
+                                if (m_webBrowser.Document != null)
+                                {
+                                    m_webBrowser.Document.InvokeScript("updateSize", new object[] { width, height });
+                                }
                             }));
                         }
                         catch (Exception ee2)
                         {
-                            logger.Warn("Exception again: " + ee2.Message, ee2);
+                            m_logger.Warn("Exception again: " + ee2.Message, ee2);
                         }
                     }
+#endif
                 }
-                curWidth = width;
-                curHeight = height;
+                m_curWidth = width;
+                m_curHeight = height;
 
             }
         }
@@ -612,137 +752,178 @@ function getContent()
         /// <param name="ymin"></param>
         /// <param name="xmax"></param>
         /// <param name="ymax"></param>
-        void setExtent(double xmin, double ymin, double xmax, double ymax, int level)
+        /// <param name="level"></param>
+        void SetExtent(double xmin, double ymin, double xmax, double ymax, int level)
         {
-            if (logger.IsDebugEnabled)
-                logger.DebugFormat("setExtent {0},{1},{2},{3},{4}", xmin, ymin, xmax, ymax, level);
+            if (m_logger.IsDebugEnabled)
+                m_logger.DebugFormat("setExtent {0},{1},{2},{3},{4}", xmin, ymin, xmax, ymax, level);
 
-            lock (locker)
+            lock (m_locker)
             {
-                if (logger.IsDebugEnabled)
-                    logger.Debug("Into lock");
+                if (m_logger.IsDebugEnabled)
+                    m_logger.Debug("Into lock");
+#if USE_CefSharp
+#else
+
                 try
                 {
-                    m_WebBrowser.Invoke(new MethodInvoker(delegate
+
+                    m_webBrowser.Invoke(new MethodInvoker(delegate
                     {
-                        m_WebBrowser.Document.InvokeScript("setExtent", new object[] { xmin, ymin, xmax, ymax, level });
+                        if (m_webBrowser.Document != null)
+                        {
+                            m_webBrowser.Document.InvokeScript("setExtent", new object[] { xmin, ymin, xmax, ymax, level });
+                        }
                     }));
                 }
                 catch (Exception ee)
                 {
-                    logger.Warn(ee.Message, ee);
+                    m_logger.Warn(ee.Message, ee);
                     //Try again, there are some things with the webbrowsercontrol that throws exceptions sometimes..
                     try
                     {
-                        m_WebBrowser.Invoke(new MethodInvoker(delegate
+                        m_webBrowser.Invoke(new MethodInvoker(delegate
                         {
-                            m_WebBrowser.Document.InvokeScript("setExtent", new object[] { xmin, ymin, xmax, ymax, level });
+                            if (m_webBrowser.Document != null)
+                            {
+                                m_webBrowser.Document.InvokeScript("setExtent", new object[] { xmin, ymin, xmax, ymax, level });
+                            }
                         }));
                     }
                     catch (Exception ee2)
                     {
-                        logger.Warn("Exception again: " + ee2.Message, ee2);
+                        m_logger.Warn("Exception again: " + ee2.Message, ee2);
                     }
                 }
+#endif
             }
         }
 
-        bool zoomDone()
+        bool ZoomDone()
         {
             bool done = false;
             //Do Not LOCK here
+            #if USE_CefSharp
+#else
+
             try
             {
-                if (appContext != null)
+                if (m_appContext != null)
                 {
-                    m_WebBrowser.Invoke(new MethodInvoker(delegate
+                    m_webBrowser.Invoke(new MethodInvoker(delegate
                     {
-                        done = (bool)m_WebBrowser.Document.InvokeScript("isZoomDone");
+                        if (m_webBrowser.Document != null)
+                        {
+                            done = (bool)m_webBrowser.Document.InvokeScript("isZoomDone");
+                        }
                     }));
                 }
             }
             catch (Exception ee)
             {
-                logger.Warn(ee.Message, ee);
+                m_logger.Warn(ee.Message, ee);
                 try
                 {
-                    m_WebBrowser.Invoke(new MethodInvoker(delegate
+                    m_webBrowser.Invoke(new MethodInvoker(delegate
                     {
-                        done = (bool)m_WebBrowser.Document.InvokeScript("isZoomDone");
+                        if (m_webBrowser.Document != null)
+                        {
+                            done = (bool)m_webBrowser.Document.InvokeScript("isZoomDone");
+                        }
                     }));
                 }
                 catch (Exception ee2)
                 {
-                    logger.Warn("Exception again " + ee2.Message, ee);
+                    m_logger.Warn("Exception again " + ee2.Message, ee);
                 }
             }
-
+#endif
             System.Diagnostics.Debug.WriteLine("ZoomDone: " + done);
 
             if (!done)
             {
-                bool idle = false;
-                bool tilesLoaded = false;
+                bool idle;
+                bool tilesLoaded;
+#if USE_CefSharp
+#else
+
                 try
                 {
-                    m_WebBrowser.Invoke(new MethodInvoker(delegate
+                    m_webBrowser.Invoke(new MethodInvoker(delegate
                     {
-                        idle = (bool)m_WebBrowser.Document.InvokeScript("isIdle");
-                        tilesLoaded = (bool)m_WebBrowser.Document.InvokeScript("isTilesLoaded");
+                        if (m_webBrowser.Document != null)
+                        {
+                            idle = (bool)m_webBrowser.Document.InvokeScript("isIdle");
+                            tilesLoaded = (bool)m_webBrowser.Document.InvokeScript("isTilesLoaded");
+                        }
                     }));
                 }
                 catch
                 {
                     try
                     {
-                        m_WebBrowser.Invoke(new MethodInvoker(delegate
+                        m_webBrowser.Invoke(new MethodInvoker(delegate
                         {
-                            idle = (bool)m_WebBrowser.Document.InvokeScript("isIdle");
-                            tilesLoaded = (bool)m_WebBrowser.Document.InvokeScript("isTilesLoaded");
+                            if (m_webBrowser.Document != null)
+                            {
+                                idle = (bool)m_webBrowser.Document.InvokeScript("isIdle");
+                                tilesLoaded = (bool)m_webBrowser.Document.InvokeScript("isTilesLoaded");
+                            }
                         }));
                     }
                     catch
                     { }
                 }
+#endif
                 System.Diagnostics.Debug.WriteLine("Idle: " + idle + ", TilesLoaded: " + tilesLoaded);
             }
 
             return done;
         }
 
-        bool m_IsLoaded = false;
-        bool isLoaded()
+        bool m_isLoaded;
+        bool IsLoaded()
         {
-            if (!mapsAdded)
+            if (!m_mapsAdded)
                 return false;
-            if (m_IsLoaded)
+            if (m_isLoaded)
                 return true;
 
             bool done = false;
-            lock (locker)
+            lock (m_locker)
             {
+#if USE_CefSharp
+#else
+
                 try
                 {
-                    m_WebBrowser.Invoke(new MethodInvoker(delegate
+                    m_webBrowser.Invoke(new MethodInvoker(delegate
                     {
-                        done = (bool)m_WebBrowser.Document.InvokeScript("isLoaded");
+                        if (m_webBrowser.Document != null)
+                        {
+                            done = (bool)m_webBrowser.Document.InvokeScript("isLoaded");
+                        }
                     }));
                 }
                 catch
                 {
                     try
                     {
-                        m_WebBrowser.Invoke(new MethodInvoker(delegate
+                        m_webBrowser.Invoke(new MethodInvoker(delegate
                         {
-                            done = (bool)m_WebBrowser.Document.InvokeScript("isLoaded");
+                            if (m_webBrowser.Document != null)
+                            {
+                                done = (bool)m_webBrowser.Document.InvokeScript("isLoaded");
+                            }
                         }));
                     }
                     catch
                     { }
                 }
+#endif
             }
             if (done)
-                m_IsLoaded = true;
+                m_isLoaded = true;
 
             return done;
         }
@@ -751,20 +932,29 @@ function getContent()
         {
             using (Stream stream = Assembly.GetExecutingAssembly()
                                .GetManifestResourceStream("BruTile.GoogleMaps.OpenLayers.light.js"))
-            using (StreamReader reader = new StreamReader(stream))
-            {
-                return reader.ReadToEnd();
-            }
+                if (stream != null)
+                {
+                    using (var reader = new StreamReader(stream))
+                    {
+                        return reader.ReadToEnd();
+                    }
+                }
+
+            return null;
         }
 
         string getWrapperCode()
         {
             using (Stream stream = Assembly.GetExecutingAssembly()
                                .GetManifestResourceStream("BruTile.GoogleMaps.Wrapper.js"))
-            using (StreamReader reader = new StreamReader(stream))
-            {
-                return reader.ReadToEnd();
-            }
+                if (stream != null)
+                {
+                    using (var reader = new StreamReader(stream))
+                    {
+                        return reader.ReadToEnd();
+                    }
+                }
+            return null;
         }
 
 
@@ -776,30 +966,25 @@ function getContent()
         public int Width { get; set; }
         public int Height { get; set; }
         public string Format { get; set; }
-        IList<Resolution> m_Resolutions;
+        IList<Resolution> m_resolutions;
         public IList<Resolution> Resolutions
         {
             get
             {
-                waitForLoad();
-                if (m_Resolutions == null)
-                {
-                    m_Resolutions = getResolutions();
-                }
-                return m_Resolutions;
-
+                WaitForLoad();
+                return m_resolutions ?? (m_resolutions = GetResolutions());
             }
             private set
             {
-                m_Resolutions = value;
+                m_resolutions = value;
             }
         }
 
-        private void waitForLoad()
+        private void WaitForLoad()
         {
             for (int i = 0; i < 100; i++)
             {
-                if (!haveInited && !isLoaded())
+                if (!m_haveInited && !IsLoaded())
                     Thread.Sleep(100);
                 else
                     break;
@@ -810,12 +995,16 @@ function getContent()
 
         public void Dispose()
         {
-            if (appContext != null)
+            if (m_appContext != null)
             {
-                appContext.ExitThread();
-                appContext = null;
-                if (m_WebBrowser != null)
-                    m_WebBrowser = null;
+                m_appContext.ExitThread();
+                m_appContext = null;
+#if USE_CefSharp
+#else
+
+                if (m_webBrowser != null)
+                    m_webBrowser = null;
+#endif
             }
         }
     }

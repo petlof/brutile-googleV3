@@ -1,25 +1,17 @@
 using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Windows.Forms;
-using System.Net.Sockets;
 using System.Threading;
-using System.IO;
+using System.Windows.Forms;
 
 namespace GoogleMapsTest
 {
     public partial class Form1 : Form
     {
-        BruTile.GoogleMaps.GoogleV3TileSource ts;
+        BruTile.GoogleMaps.GoogleV3TileSource m_ts;
         public Form1()
         {
-            ts = new BruTile.GoogleMaps.GoogleV3TileSource(BruTile.GoogleMaps.GoogleV3TileSource.MapTypeId.ROADMAP);
+            m_ts = new BruTile.GoogleMaps.GoogleV3TileSource(BruTile.GoogleMaps.GoogleV3TileSource.MapTypeId.HYBRID);
             InitializeComponent();
-            SharpMap.Layers.TileAsyncLayer tl = new SharpMap.Layers.TileAsyncLayer(ts, "Google");
+            var tl = new SharpMap.Layers.TileAsyncLayer(m_ts, "Google");
             tl.OnlyRedrawWhenComplete = true;
 
             mapBox1.Map.BackgroundLayer.Add(tl);
@@ -37,48 +29,32 @@ namespace GoogleMapsTest
         }
 
         //Random r = new Random();
-        int nextMap = 1;
+        int m_nextMap = 1;
         private void button2_Click(object sender, EventArgs e)
         {
             mapBox1.Map.BackgroundLayer.Clear();
-            if (ts != null)
-                ts.Dispose();
-            ts = new BruTile.GoogleMaps.GoogleV3TileSource((BruTile.GoogleMaps.GoogleV3TileSource.MapTypeId)(nextMap++ % 4));
-            SharpMap.Layers.TileAsyncLayer tl = new SharpMap.Layers.TileAsyncLayer(ts, "Google");
+            if (m_ts != null)
+                m_ts.Dispose();
+            m_ts = new BruTile.GoogleMaps.GoogleV3TileSource((BruTile.GoogleMaps.GoogleV3TileSource.MapTypeId)(m_nextMap++ % 4));
+            var tl = new SharpMap.Layers.TileAsyncLayer(m_ts, "Google");
             mapBox1.Map.BackgroundLayer.Add(tl);
 
             mapBox1.Refresh();
-
-            
-            //for (int i = 0; i < 10; i++)
-            {
-               // FrmMapFrm frm = new FrmMapFrm();
-               // frm.Show();
-                //while (!frm.Visible)
-                //{
-                //    Thread.Sleep(100);
-                //}
-
-                //frm.Close();
-                //frm.Dispose();
-            }
         }
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
-            ts.Dispose();
+            m_ts.Dispose();
         }
 
         private void button3_Click(object sender, EventArgs e)
         {
             for (int i = 0; i < 10; i++)
             {
-                Thread th = new Thread(new ThreadStart(delegate
+                var th = new Thread(RunTest)
                 {
-                    RunTest();
-                }
-                ));
-                th.Name = "T" + i;
+                    Name = "T" + i
+                };
                 th.Start();
             }
         }
