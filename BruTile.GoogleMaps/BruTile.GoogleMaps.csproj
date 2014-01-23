@@ -34,12 +34,6 @@
     <Reference Include="BruTile">
       <HintPath>..\External References\BruTile.dll</HintPath>
     </Reference>
-    <Reference Include="CefSharp">
-      <HintPath>..\External References\CefSharp.dll</HintPath>
-    </Reference>
-    <Reference Include="CefSharp.WinForms">
-      <HintPath>..\External References\CefSharp.WinForms.dll</HintPath>
-    </Reference>
     <Reference Include="Common.Logging, Version=2.0.0.0, Culture=neutral, PublicKeyToken=af08829b84f0328e, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\External References\Common.Logging.dll</HintPath>

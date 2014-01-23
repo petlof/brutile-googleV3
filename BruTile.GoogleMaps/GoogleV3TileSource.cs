@@ -69,5 +69,13 @@ namespace BruTile.GoogleMaps
                 m_tileSchema = null;
             }
         }
+
+        public Extent Extent
+        {
+            get
+            {
+                return m_tileSchema.Extent;
+            }
+        }
     }
 }
