@@ -500,6 +500,7 @@ function getContent()
         }
 
         readonly Regex m_rex = new Regex(@"!1i(?<z>\d+).*?!2i(?<x>\d+).*?!3i(?<y>\d+)", RegexOptions.IgnoreCase);
+        readonly Regex m_rexKH = new Regex(@"x=(?<x>\d+).*?y=(?<y>\d+).*?z=(?<z>\d+)", RegexOptions.IgnoreCase);
         readonly SphericalMercatorInvertedWorldSchema m_baseSchema = new SphericalMercatorInvertedWorldSchema();
         public IEnumerable<TileInfo> GetTilesInView(Extent extent, int level)
         {
@@ -534,7 +535,8 @@ function getContent()
                     if (url.Contains("&scale="))
                         url = m_scaleMath.Replace(url, "");
 
-                    if (MapType == GoogleV3TileSource.MapTypeId.HYBRID && url.StartsWith("http://mt", StringComparison.OrdinalIgnoreCase))
+                    //if (MapType == GoogleV3TileSource.MapTypeId.HYBRID && url.StartsWith("http://mt", StringComparison.OrdinalIgnoreCase))
+                    if (MapType == GoogleV3TileSource.MapTypeId.HYBRID && url.Contains("!1e50!"))
                     {
                         overlayUrls.Add(url);
                     }
@@ -543,6 +545,35 @@ function getContent()
                         if (!baseUrls.Contains(url))
                             baseUrls.Add(url);
                     }
+                }
+                else
+                {
+                    m = m_rexKH.Match(ti.Url);
+                    if (m.Success)
+                    {
+                        string url = ti.Url;
+                        url = url.Replace("x=" + m.Groups["x"].Value, "x={0}");
+                        url = url.Replace("y=" + m.Groups["y"].Value, "y={1}");
+                        url = url.Replace("z=" + m.Groups["z"].Value, "z={2}");
+                        if (url.Contains("&s="))
+                            url = m_sMatch.Replace(url, "&s={3}&");
+                        if (url.Contains("&token="))
+                            url = m_tokenMatch.Replace(url, "&token={4}&");
+                        if (url.Contains("&scale="))
+                            url = m_scaleMath.Replace(url, "");
+
+                        //if (MapType == GoogleV3TileSource.MapTypeId.HYBRID && url.StartsWith("http://mt", StringComparison.OrdinalIgnoreCase))
+                        if (MapType == GoogleV3TileSource.MapTypeId.HYBRID && url.Contains("!1e50!"))
+                        {
+                            overlayUrls.Add(url);
+                        }
+                        else
+                        {
+                            if (!baseUrls.Contains(url))
+                                baseUrls.Add(url);
+                        }
+                    }
+
                 }
             }
             mapUrlTemplates = baseUrls.ToArray();
