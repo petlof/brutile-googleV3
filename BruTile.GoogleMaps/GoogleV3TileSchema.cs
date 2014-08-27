@@ -499,7 +499,7 @@ function getContent()
             return GetTilesInView(extent, level);
         }
 
-        readonly Regex m_rex = new Regex(@"x=(?<x>\d+).*?&y=(?<y>\d+).*?&z=(?<z>\d+)", RegexOptions.IgnoreCase);
+        readonly Regex m_rex = new Regex(@"!1i(?<z>\d+).*?!2i(?<x>\d+).*?!3i(?<y>\d+)", RegexOptions.IgnoreCase);
         readonly SphericalMercatorInvertedWorldSchema m_baseSchema = new SphericalMercatorInvertedWorldSchema();
         public IEnumerable<TileInfo> GetTilesInView(Extent extent, int level)
         {
@@ -524,11 +524,11 @@ function getContent()
                 if (m.Success)
                 {
                     string url = ti.Url;
-                    url = url.Replace("x=" + m.Groups["x"].Value, "x={0}");
-                    url = url.Replace("y=" + m.Groups["y"].Value, "y={1}");
-                    url = url.Replace("z=" + m.Groups["z"].Value, "z={2}");
-                    if (url.Contains("&s="))
-                        url = m_sMatch.Replace(url, "&s={3}&");
+                    url = url.Replace("!1i" + m.Groups["z"].Value, "!1i{2}");
+                    url = url.Replace("!2i" + m.Groups["x"].Value, "!2i{0}");
+                    url = url.Replace("!3i" + m.Groups["y"].Value, "!3i{1}");
+                    //if (url.Contains("&s="))
+                    //    url = m_sMatch.Replace(url, "&s={3}&");
                     if (url.Contains("&token="))
                         url = m_tokenMatch.Replace(url, "&token={4}&");
                     if (url.Contains("&scale="))
