@@ -515,6 +515,7 @@ function getContent()
         readonly Regex m_sMatch = new Regex("&s=.*?&");
         readonly Regex m_tokenMatch = new Regex("&token=\\d*?&");
         readonly Regex m_scaleMath = new Regex("&scale=\\d");
+        readonly Regex m_scaleMathV3 = new Regex("!5m\\d!5f\\d");
         private void GetTemplateUrls(IEnumerable<JsTileInfo> tiles, out string[] mapUrlTemplates, out string[] overlayUrlTemplates)
         {
             var baseUrls = new List<string>();
@@ -528,14 +529,15 @@ function getContent()
                     url = url.Replace("!1i" + m.Groups["z"].Value, "!1i{2}");
                     url = url.Replace("!2i" + m.Groups["x"].Value, "!2i{0}");
                     url = url.Replace("!3i" + m.Groups["y"].Value, "!3i{1}");
-                    //if (url.Contains("&s="))
-                    //    url = m_sMatch.Replace(url, "&s={3}&");
                     if (url.Contains("&token="))
                         url = m_tokenMatch.Replace(url, "&token={4}&");
-                    if (url.Contains("&scale="))
-                        url = m_scaleMath.Replace(url, "");
 
-                    //if (MapType == GoogleV3TileSource.MapTypeId.HYBRID && url.StartsWith("http://mt", StringComparison.OrdinalIgnoreCase))
+                    Match scalem = m_scaleMathV3.Match(url);
+                    if (scalem.Success)
+                    {
+                        url = url.Replace(scalem.Groups[0].Value, "");
+                    }
+
                     if (MapType == GoogleV3TileSource.MapTypeId.HYBRID && url.Contains("!1e50!"))
                     {
                         overlayUrls.Add(url);
@@ -562,7 +564,6 @@ function getContent()
                         if (url.Contains("&scale="))
                             url = m_scaleMath.Replace(url, "");
 
-                        //if (MapType == GoogleV3TileSource.MapTypeId.HYBRID && url.StartsWith("http://mt", StringComparison.OrdinalIgnoreCase))
                         if (MapType == GoogleV3TileSource.MapTypeId.HYBRID && url.Contains("!1e50!"))
                         {
                             overlayUrls.Add(url);
