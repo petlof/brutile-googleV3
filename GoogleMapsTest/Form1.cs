@@ -1,4 +1,5 @@
 using System;
+using System.Net;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -9,6 +10,8 @@ namespace GoogleMapsTest
         BruTile.GoogleMaps.GoogleV3TileSource m_ts;
         public Form1()
         {
+            ServicePointManager.DefaultConnectionLimit = 20;
+
             m_ts = new BruTile.GoogleMaps.GoogleV3TileSource(BruTile.GoogleMaps.GoogleV3TileSource.MapTypeId.ROADMAP);
             InitializeComponent();
             var tl = new SharpMap.Layers.TileAsyncLayer(m_ts, "Google");
